@@ -1,0 +1,16 @@
+# 依赖
+node_modules/
+
+# 环境变量与密钥（绝对不要提交）
+.env
+.env.*
+
+# 日志
+*.log
+
+# 系统与编辑器
+Thumbs.db
+desktop.ini
+.DS_Store
+.vscode/
+.idea/

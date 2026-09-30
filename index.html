@@ -1,0 +1,2307 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>3D 第一人称射击 · Three.js</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;overflow:hidden;background:#0b0f14;font-family:'Segoe UI',system-ui,-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;user-select:none}
+  #game{position:fixed;inset:0}
+  canvas{display:block}
+
+  #hud{position:fixed;inset:0;pointer-events:none;z-index:10}
+  #crosshair{position:absolute;left:50%;top:50%;width:26px;height:26px;transform:translate(-50%,-50%)}
+  #crosshair::before,#crosshair::after{content:'';position:absolute;background:rgba(255,255,255,.92);box-shadow:0 0 3px rgba(0,0,0,.6)}
+  #crosshair::before{left:50%;top:0;width:2px;height:100%;transform:translateX(-50%)}
+  #crosshair::after{top:50%;left:0;height:2px;width:100%;transform:translateY(-50%)}
+  #crosshair i{position:absolute;left:50%;top:50%;width:5px;height:5px;border-radius:50%;background:#ff4d4d;transform:translate(-50%,-50%);box-shadow:0 0 4px rgba(255,60,60,.8)}
+
+  #hitmarker{position:absolute;left:50%;top:50%;width:30px;height:30px;transform:translate(-50%,-50%);opacity:0;transition:opacity .1s}
+  #hitmarker::before,#hitmarker::after{content:'';position:absolute;left:50%;top:50%;background:#fff;box-shadow:0 0 4px rgba(255,80,80,.9)}
+  #hitmarker::before{width:2px;height:100%;transform:translate(-50%,-50%) rotate(45deg)}
+  #hitmarker::after{width:2px;height:100%;transform:translate(-50%,-50%) rotate(-45deg)}
+  #hitmarker.show{opacity:1}
+
+  #hpWrap{position:absolute;left:24px;bottom:26px;width:280px}
+  #hpLabel{color:#e8ecf2;font-size:13px;letter-spacing:1px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;text-shadow:0 1px 2px #000}
+  #hpTrack{height:16px;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.25);border-radius:8px;overflow:hidden}
+  #hpBar{height:100%;width:100%;background:linear-gradient(90deg,#4ade80,#a3e635);border-radius:8px;transition:width .15s,background .3s}
+  #hpWrap.low #hpBar{background:linear-gradient(90deg,#ef4444,#f97316);animation:pulse .8s infinite}
+  @keyframes pulse{50%{opacity:.75}}
+
+  #scoreWrap{position:absolute;right:26px;top:22px;text-align:right;color:#fff;text-shadow:0 2px 6px rgba(0,0,0,.8)}
+  #scoreLabel{font-size:13px;letter-spacing:2px;color:#ffd166}
+  #score{font-size:40px;font-weight:800;line-height:1.05}
+  #killsWrap{position:absolute;left:26px;top:22px;color:#fff;text-shadow:0 2px 6px rgba(0,0,0,.8)}
+  #killsLabel{font-size:12px;letter-spacing:2px;color:#7dd3fc}
+  #kills{font-size:30px;font-weight:700}
+  #ammoWrap{position:absolute;right:28px;bottom:24px;color:#ffe08a;font-size:13px;letter-spacing:1px;text-align:right;text-shadow:0 1px 2px #000}
+  #weaponName{font-size:15px;font-weight:700;color:#fff;margin-bottom:4px;letter-spacing:1px}
+  #ammoWrap b{font-size:26px;font-weight:800}
+
+  #minimap{position:absolute;right:26px;top:122px;width:180px;height:180px;border:2px solid rgba(255,255,255,.4);border-radius:10px;overflow:hidden;background:rgba(10,14,20,.55);box-shadow:0 4px 16px rgba(0,0,0,.45)}
+  #minimap canvas{display:block;width:100%;height:100%}
+
+  /* 单挑：顶部双方血条 + 回合比分 */
+  #duelBar{position:absolute;top:14px;left:50%;transform:translateX(-50%);display:none;align-items:center;gap:16px;pointer-events:none}
+  #duelBar.on{display:flex}
+  .db-side{display:flex;align-items:center;gap:8px}
+  .db-name{font-size:13px;font-weight:700;color:#e8ecf2;text-shadow:0 1px 3px #000;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .db-track{width:168px;height:14px;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.28);border-radius:7px;overflow:hidden;display:flex}
+  .db-side.db-op .db-track{justify-content:flex-end}
+  .db-fill{height:100%;width:100%;background:linear-gradient(90deg,#4ade80,#a3e635);transition:width .15s}
+  .db-side.db-op .db-fill{background:linear-gradient(270deg,#f87171,#fb923c)}
+  .db-hp{font-size:13px;font-weight:800;color:#fff;min-width:32px;text-align:center;text-shadow:0 1px 3px #000;font-variant-numeric:tabular-nums}
+  .db-score{font-size:26px;font-weight:900;color:#ffd166;letter-spacing:2px;text-shadow:0 0 10px rgba(255,180,40,.5);font-variant-numeric:tabular-nums}
+  .db-score i{font-style:normal;opacity:.5;margin:0 5px}
+
+  #damageVignette{position:fixed;inset:0;background:radial-gradient(ellipse at center,transparent 35%,rgba(220,20,20,.65) 100%);opacity:0;transition:opacity .6s;z-index:5;pointer-events:none}
+  #scorePopup{position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);font-size:34px;font-weight:900;color:#ffd166;opacity:0;text-shadow:0 0 12px rgba(255,180,40,.9);transition:all .5s}
+  #scorePopup.show{opacity:1;transform:translate(-50%,-90%)}
+
+  #overlay{position:fixed;inset:0;z-index:20;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(8,12,18,.86);backdrop-filter:blur(5px);color:#fff;text-align:center;cursor:pointer}
+  #overlay.hidden{display:none}
+  #overlay h1{font-size:46px;letter-spacing:6px;background:linear-gradient(90deg,#ffd166,#ff8a5c);-webkit-background-clip:text;background-clip:text;color:transparent;margin-bottom:12px;font-weight:900}
+  #overlayDesc{color:#c7d2e0;font-size:15px;line-height:2;margin-bottom:22px;max-width:620px}
+  #overlayDesc kbd{background:#222a36;border:1px solid #3a4757;border-bottom-width:3px;border-radius:6px;padding:2px 8px;font-family:inherit;font-size:13px;color:#ffe08a;margin:0 2px}
+
+  #modeSelect{display:flex;gap:12px;margin-bottom:20px}
+  .mode-card{width:150px;padding:12px 14px;background:rgba(255,255,255,.06);border:2px solid rgba(255,255,255,.14);border-radius:12px;cursor:pointer;transition:transform .15s,border-color .15s,box-shadow .15s;text-align:center}
+  .mode-card:hover{transform:translateY(-3px);border-color:rgba(255,209,102,.7)}
+  .mode-card.selected{border-color:#ffd166;background:rgba(255,209,102,.12);box-shadow:0 0 16px rgba(255,209,102,.3)}
+  .mode-name{font-size:17px;font-weight:800}
+  .mode-desc{font-size:12px;color:#9fb0c3;margin-top:4px}
+  #modeNotice{position:fixed;top:70px;left:50%;transform:translateX(-50%);background:rgba(20,26,34,.96);border:1px solid #ffd166;color:#ffd166;padding:14px 30px;border-radius:12px;font-size:16px;font-weight:700;letter-spacing:1px;z-index:40;opacity:0;pointer-events:none;transition:opacity .25s,transform .25s;box-shadow:0 8px 24px rgba(0,0,0,.5)}
+  #modeNotice.show{opacity:1;transform:translateX(-50%) translateY(6px)}
+  #lobbyPanel{display:none;flex-direction:column;gap:10px;align-items:center;margin-bottom:14px;min-width:560px;max-width:660px}
+  .np-title{font-size:18px;font-weight:800;color:#ffd166;letter-spacing:2px}
+  .np-row{display:flex;gap:10px;align-items:center;justify-content:center}
+  .np-btn{pointer-events:auto;background:linear-gradient(180deg,#4a5568,#2d3748);color:#fff;border:1px solid #64748b;border-radius:10px;padding:10px 22px;font-size:15px;font-weight:700;cursor:pointer;transition:transform .12s;font-family:inherit}
+  .np-btn:hover{transform:translateY(-2px)}
+  .np-btn:disabled{opacity:.45;cursor:not-allowed;transform:none}
+  .np-btn.small{padding:8px 14px;font-size:13px}
+  .np-btn.ghost{background:transparent;color:#9fb0c3;border:1px solid #3a4757}
+  .lp-conn{font-size:12px;padding:3px 12px;border-radius:20px;border:1px solid #3a4757;color:#9fb0c3;background:#141a22;margin-left:10px}
+  .lp-conn.lp-ok{color:#4ade80;border-color:#2f7a4d}
+  .lp-conn.lp-err{color:#f87171;border-color:#7f3d3d}
+  .lp-row{display:flex;gap:8px;align-items:center;width:100%;max-width:600px;pointer-events:auto}
+  .lp-label{color:#9fb0c3;font-size:13px;width:46px;text-align:right;flex-shrink:0}
+  #lpNick,#lpAddr{flex:1;padding:9px 12px;border-radius:9px;border:1px solid #3a4757;background:#141a22;color:#fff;font-size:14px;outline:none;font-family:inherit;min-width:0}
+  #lpNick:focus,#lpAddr:focus{border-color:#ffd166}
+  .lp-toolbar{width:100%;max-width:600px;justify-content:space-between}
+  .lp-count{color:#9fb0c3;font-size:13px}
+  .lp-rooms{width:100%;max-width:600px;max-height:212px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:2px}
+  .lp-room{display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:11px;padding:10px 14px;pointer-events:auto}
+  .lp-rm-id{font-family:Consolas,monospace;font-weight:800;color:#ffe08a;font-size:19px;letter-spacing:2px;min-width:72px}
+  .lp-rm-info{flex:1;text-align:left;font-size:13px;color:#9fb0c3;line-height:1.55;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .lp-rm-host{color:#fff;font-weight:700}
+  .lp-rm-tag{font-size:11px;padding:2px 9px;border-radius:20px;border:1px solid #2f7a4d;color:#4ade80;flex-shrink:0}
+  .lp-rm-tag.full{color:#8b98a5;border-color:#3a4757}
+  .lp-rm-tag.play{color:#ffd166;border-color:#8a6d1f}
+  .lp-empty{color:#5b6b7c;font-size:14px;text-align:center;padding:30px 0;line-height:1.9}
+  .lp-status{color:#9fb0c3;font-size:12px;line-height:1.7;min-height:17px;text-align:center;max-width:600px}
+  .wr-code{display:flex;gap:10px;align-items:center;color:#c7d2e0;font-size:14px;pointer-events:auto}
+  #waitCode{font-family:Consolas,monospace;font-size:24px;font-weight:800;color:#ffe08a;letter-spacing:5px;background:#141a22;border:1px solid #3a4757;border-radius:8px;padding:2px 14px}
+  #waitStatus{color:#9fb0c3;font-size:13px;min-height:18px}
+  .wm-tag.wm-wait{color:#9fb0c3}
+  #overlayLobbyBtn{display:none;pointer-events:auto;margin-top:16px;background:transparent;color:#9fb0c3;border:1px solid #3a4757;border-radius:10px;padding:10px 26px;font-size:14px;font-weight:600;cursor:pointer;transition:all .12s;font-family:inherit}
+  #overlayLobbyBtn:hover{color:#fff;border-color:#64748b}
+  #countdownOverlay{position:fixed;inset:0;z-index:50;display:none;flex-direction:column;align-items:center;justify-content:center;background:rgba(8,12,18,.88);color:#fff;pointer-events:none}
+  #countdownNum{font-size:150px;font-weight:900;line-height:1;color:#ffd166;text-shadow:0 0 40px rgba(255,209,102,.6);animation:cdPop .9s ease}
+  @keyframes cdPop{0%{transform:scale(1.7);opacity:0}30%{transform:scale(1);opacity:1}100%{transform:scale(1)}}
+  #countdownSub{font-size:20px;color:#c7d2e0;letter-spacing:8px;margin-top:16px}
+  #waitRoom{display:none;flex-direction:column;gap:12px;align-items:center;margin-bottom:20px;min-width:360px}
+  .wm-item{width:300px;display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.15);border-radius:10px;font-size:15px;font-weight:600;color:#e8ecf2}
+  .wm-item .wm-tag{font-size:12px;color:#4ade80;font-weight:700}
+  #waitStart{background:linear-gradient(180deg,#4ade80,#16a34a);color:#062a12;border:1px solid #4ade80;font-size:17px;padding:12px 44px}
+  #waitStart:disabled{background:linear-gradient(180deg,#3a4757,#2d3748);color:#8b98a5;border:1px solid #3a4757;cursor:not-allowed;transform:none;box-shadow:none}
+  #waitStart:hover:disabled{transform:none}
+  #weaponSelect{display:flex;gap:14px;margin-bottom:30px;flex-wrap:wrap;justify-content:center}
+  .weapon-card{width:196px;padding:18px 16px;background:rgba(255,255,255,.06);border:2px solid rgba(255,255,255,.14);border-radius:16px;cursor:pointer;transition:transform .15s,border-color .15s,box-shadow .15s;text-align:center}
+  .weapon-card:hover{transform:translateY(-4px);border-color:rgba(255,209,102,.7)}
+  .weapon-card.selected{border-color:#ffd166;background:rgba(255,209,102,.12);box-shadow:0 0 20px rgba(255,209,102,.35)}
+  .w-badge{font-size:26px;font-weight:900;color:#ffd166;letter-spacing:2px;margin-bottom:4px}
+  .w-name{font-size:18px;font-weight:800;margin-bottom:8px}
+  .w-stats{font-size:12px;color:#9fb0c3;line-height:1.8}
+  .w-desc{font-size:12px;color:#ffd166;margin-top:8px;min-height:18px;letter-spacing:1px}
+
+  #overlayBtn{pointer-events:auto;background:linear-gradient(180deg,#ffd166,#f5a623);color:#241a05;border:none;border-radius:12px;padding:16px 54px;font-size:20px;font-weight:800;letter-spacing:3px;cursor:pointer;box-shadow:0 8px 24px rgba(245,166,35,.35);transition:transform .15s}
+  #overlayBtn:hover{transform:translateY(-2px) scale(1.03)}
+  #overlayBtn:active{transform:scale(.97)}
+  #hint{position:absolute;bottom:12px;left:0;right:0;text-align:center;color:rgba(255,255,255,.4);font-size:12px;letter-spacing:1px}
+</style>
+</head>
+<body>
+<div id="game"></div>
+
+<div id="hud">
+  <div id="crosshair"><i></i></div>
+  <div id="hitmarker"></div>
+  <div id="scorePopup"></div>
+  <div id="hpWrap">
+    <div id="hpLabel"><span>❤ 生命值</span><span id="hpText">100</span></div>
+    <div id="hpTrack"><div id="hpBar"></div></div>
+  </div>
+  <div id="scoreWrap">
+    <div id="scoreLabel">得 分</div>
+    <div id="score">0</div>
+  </div>
+  <div id="killsWrap">
+    <div id="killsLabel">击 杀</div>
+    <div id="kills">0</div>
+  </div>
+  <div id="ammoWrap">
+    <div id="weaponName">手枪 P9</div>
+    <div>弹药 <b id="ammoCount">12</b> / <span id="ammoMax">12</span></div>
+  </div>
+  <div id="minimap"><canvas id="mmCanvas" width="180" height="180"></canvas></div>
+  <div id="duelBar">
+    <div class="db-side db-me">
+      <span class="db-name" id="dbMyName">你</span>
+      <div class="db-track"><div class="db-fill" id="dbMyHp"></div></div>
+      <span class="db-hp" id="dbMyHpNum">100</span>
+    </div>
+    <div class="db-score"><span id="dbMyWins">0</span><i>:</i><span id="dbOpWins">0</span></div>
+    <div class="db-side db-op">
+      <span class="db-hp" id="dbOpHpNum">100</span>
+      <div class="db-track"><div class="db-fill" id="dbOpHp"></div></div>
+      <span class="db-name" id="dbOpName">对方</span>
+    </div>
+  </div>
+</div>
+<div id="damageVignette"></div>
+
+<div id="overlay">
+  <h1 id="overlayTitle">3D 第一人称射击</h1>
+  <div id="modeSelect">
+    <div class="mode-card selected" data-mode="solo">
+      <div class="mode-name">单人模式</div>
+      <div class="mode-desc">本地单机游玩</div>
+    </div>
+    <div class="mode-card" data-mode="multi">
+      <div class="mode-name">双人单挑</div>
+      <div class="mode-desc">联机大厅 · 1v1 对决</div>
+    </div>
+  </div>
+  <div id="overlayDesc">
+    <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 移动 ｜ 鼠标 瞄准 ｜ <kbd>左键</kbd> 射击 ｜ <kbd>空格</kbd> 跳跃 ｜ <kbd>Shift</kbd> 加速
+    <br><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> 切换武器 ｜ <kbd>R</kbd> 换弹 ｜ 敌人发现你之后会追击并攻击你！
+  </div>
+  <div id="weaponSelect">
+    <div class="weapon-card selected" data-weapon="pistol">
+      <div class="w-badge">P9</div>
+      <div class="w-name">手枪</div>
+      <div class="w-stats">伤害 100 · 射速 3.5/s<br>弹夹 12 · 精准</div>
+      <div class="w-desc">均衡可靠</div>
+    </div>
+    <div class="weapon-card" data-weapon="smg">
+      <div class="w-badge">MP5</div>
+      <div class="w-name">冲锋枪</div>
+      <div class="w-stats">伤害 45 · 射速 11/s<br>弹夹 30 · 全自动</div>
+      <div class="w-desc">火力压制 · 高后坐</div>
+    </div>
+    <div class="weapon-card" data-weapon="shotgun">
+      <div class="w-badge">M870</div>
+      <div class="w-name">霰弹枪</div>
+      <div class="w-stats">伤害 22×12 · 射速 1.2/s<br>弹夹 6 · 散射弹丸</div>
+      <div class="w-desc">近战终结者</div>
+    </div>
+  </div>
+  <div id="lobbyPanel">
+    <div class="np-row">
+      <div class="np-title">联机大厅</div>
+      <span id="lpConn" class="lp-conn">未连接</span>
+    </div>
+    <div class="lp-row">
+      <label class="lp-label">昵称</label>
+      <input id="lpNick" maxlength="12" placeholder="输入昵称，回车或点保存" spellcheck="false">
+      <button id="lpSave" class="np-btn small">保存</button>
+    </div>
+    <div class="lp-row">
+      <label class="lp-label">服务器</label>
+      <input id="lpAddr" placeholder="留空=自动（由 node server.js 打开的页面自动取本机）" spellcheck="false">
+      <button id="lpConnect" class="np-btn small">连接</button>
+    </div>
+    <div class="np-row lp-toolbar">
+      <span id="lpCount" class="lp-count"></span>
+      <button id="lpRefresh" class="np-btn small">刷新</button>
+      <button id="lpCreate" class="np-btn">＋ 创建房间</button>
+    </div>
+    <div id="lpRooms" class="lp-rooms"></div>
+    <div id="lpStatus" class="lp-status"></div>
+    <button id="lpBack" class="np-btn ghost">← 返回模式选择</button>
+  </div>
+  <div id="waitRoom">
+    <div class="np-title">等待室</div>
+    <div class="wr-code">房间号
+      <b id="waitCode">----</b>
+      <button id="waitCopy" class="np-btn small">复制房间号</button>
+    </div>
+    <div id="waitMembers"></div>
+    <div id="waitStatus"></div>
+    <div class="np-row">
+      <button id="waitStart" class="np-btn" disabled>开始游戏</button>
+      <button id="waitLeave" class="np-btn ghost">返回大厅</button>
+    </div>
+  </div>
+  <button id="overlayBtn">点击开始</button>
+  <button id="overlayLobbyBtn">返回大厅</button>
+  <div id="hint">双人单挑：先在本目录运行 node server.js，双方浏览器打开 http://房主IP:8000 进大厅，一人建房、一人加入 → 房主点开始</div>
+</div>
+
+<div id="modeNotice"></div>
+<div id="countdownOverlay"><div id="countdownNum">3</div><div id="countdownSub">准备战斗</div></div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+
+/* ================= 基础场景 ================= */
+const container = document.getElementById('game');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+container.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87b5d9);
+scene.fog = new THREE.Fog(0x87b5d9, 70, 180);
+
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 500);
+camera.position.set(0, 1.7, 0);
+camera.rotation.order = 'YXZ';
+
+const controls = new PointerLockControls(camera, renderer.domElement);
+
+/* 灯光 */
+scene.add(new THREE.HemisphereLight(0xbfd8ff, 0x3a4a3a, 0.9));
+const sun = new THREE.DirectionalLight(0xfff2d0, 1.2);
+sun.position.set(30, 42, 20);
+sun.castShadow = true;
+sun.shadow.mapSize.set(1024, 1024);
+sun.shadow.camera.left = -60;
+sun.shadow.camera.right = 60;
+sun.shadow.camera.top = 60;
+sun.shadow.camera.bottom = -60;
+sun.shadow.camera.far = 140;
+scene.add(sun);
+
+/* 地面 */
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(300, 300),
+  new THREE.MeshStandardMaterial({ color: 0x5a7d4a, roughness: 1 })
+);
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+const grid = new THREE.GridHelper(92, 18, 0xffffff, 0xffffff);
+grid.material.transparent = true;
+grid.material.opacity = 0.14;
+grid.position.y = 0.02;
+scene.add(grid);
+
+/* ================= 碰撞与障碍物 ================= */
+const ARENA = 46;
+const obstacles = [];
+const obstacleMeshes = [];
+const wallRects = [];
+const crateRects = [];
+
+function addBox(x, y, z, w, h, d, color, isWall) {
+  const mesh = new THREE.Mesh(
+    new THREE.BoxGeometry(w, h, d),
+    new THREE.MeshStandardMaterial({ color: color, roughness: 0.9 })
+  );
+  mesh.position.set(x, y, z);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  scene.add(mesh);
+  obstacleMeshes.push(mesh);
+  const rect = { minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 };
+  obstacles.push(rect);
+  if (isWall) wallRects.push(rect); else crateRects.push(rect);
+  return mesh;
+}
+
+addBox(0, 2, -ARENA, ARENA * 2 + 2, 4, 1, 0x8a8f98, true);
+addBox(0, 2,  ARENA, ARENA * 2 + 2, 4, 1, 0x8a8f98, true);
+addBox(-ARENA, 2, 0, 1, 4, ARENA * 2 + 2, 0x8a8f98, true);
+addBox( ARENA, 2, 0, 1, 4, ARENA * 2 + 2, 0x8a8f98, true);
+
+const crateSpots = [
+  [-18, -12], [14, -20], [-24, 14], [22, 16], [-6, 24],
+  [8, -30], [-32, -26], [30, -4], [-10, -34], [18, 30]
+];
+crateSpots.forEach(function (p) { addBox(p[0], 1.1, p[1], 2.2, 2.2, 2.2, 0xb08a5a, false); });
+
+/* 内部障碍墙：南北两排横墙 + 中央纵墙，围出走廊 */
+addBox(-15, 1.4, -16, 18, 2.8, 0.9, 0x6f7680, true);
+addBox(15, 1.4, -16, 18, 2.8, 0.9, 0x6f7680, true);
+addBox(-13, 1.4, 16, 14, 2.8, 0.9, 0x6f7680, true);
+addBox(13, 1.4, 16, 14, 2.8, 0.9, 0x6f7680, true);
+addBox(0, 1.4, -19, 0.9, 2.8, 14, 0x6f7680, true);
+addBox(0, 1.4, 19, 0.9, 2.8, 14, 0x6f7680, true);
+addBox(-16, 1.4, 0, 0.9, 2.8, 18, 0x6f7680, true);
+addBox(16, 1.4, 0, 0.9, 2.8, 18, 0x6f7680, true);
+
+function collideCircle(x, z, r) {
+  let px = x, pz = z;
+  for (let i = 0; i < obstacles.length; i++) {
+    const o = obstacles[i];
+    const cx = Math.max(o.minX, Math.min(px, o.maxX));
+    const cz = Math.max(o.minZ, Math.min(pz, o.maxZ));
+    const dx = px - cx, dz = pz - cz;
+    const d2 = dx * dx + dz * dz;
+    if (d2 < r * r) {
+      const d = Math.sqrt(d2) || 0.0001;
+      const push = (r - d) / d;
+      px += dx * push;
+      pz += dz * push;
+    }
+  }
+  return [px, pz];
+}
+
+/* ================= 玩家 ================= */
+const player = { radius: 0.6, eye: 1.7, velY: 0, onGround: true };
+
+/* 模式：solo = 单人打机器人；multi = 联机双人单挑（1v1） */
+let gameMode = 'solo';
+function isDuel() { return gameMode === 'multi'; }
+
+/* 单挑状态：duelWins 由房主权威维护；opHealth = 对方血量（HUD 用）；hostSim = 加入者看到的房主 */
+const duelWins = { host: 0, guest: 0 };
+let opHealth = 100;
+const hostSim = { x: 0, z: 0, alive: false };
+
+/* 单挑出生点：每回合随机抽一对。
+ * 随机的讲究：
+ *   1) 候选点按"环"生成（同一环上到场地中心的距离完全相同），先按环挑 => 双方位置天然公平；
+ *   2) 生成候选点时就把落在箱子/内墙里、或贴边的点剔掉 => 抽出来一定站得住；
+ *   3) 两点之间要求足够的间距 => 不会一开局就贴脸互秒，也不会远到互相找不到。
+ * 由房主抽签，抽完发给加入者，保证两边用的是同一组出生点。 */
+function spawnClear(x, z) {
+  const M = player.radius + 0.7;              // 留点余地，别贴着墙或箱子站
+  if (Math.abs(x) > ARENA - 3 || Math.abs(z) > ARENA - 3) return false;
+  for (let i = 0; i < obstacles.length; i++) {
+    const o = obstacles[i];
+    const cx = Math.max(o.minX, Math.min(x, o.maxX));
+    const cz = Math.max(o.minZ, Math.min(z, o.maxZ));
+    if ((x - cx) * (x - cx) + (z - cz) * (z - cz) < M * M) return false;
+  }
+  return true;
+}
+
+const DUEL_SPAWN_RINGS = (function () {
+  const rings = [];
+  for (let ri = 0; ri < 3; ri++) {
+    const r = 24 + ri * 6;                    // 24 / 30 / 36
+    const pts = [];
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * Math.PI * 2 + ri * 0.19;
+      const x = Math.cos(a) * r, z = Math.sin(a) * r;
+      if (spawnClear(x, z)) pts.push({ x: x, z: z, r: r });
+    }
+    if (pts.length >= 2) rings.push(pts);
+  }
+  return rings;
+})();
+
+/* three 里 rotation.y=θ 的前方是 (-sinθ, 0, -cosθ)，所以"看向(px,pz)"就是下面这个角度 */
+function yawTo(fromX, fromZ, toX, toZ) {
+  return Math.atan2(-(toX - fromX), -(toZ - fromZ));
+}
+
+function duelPair(a, b) {
+  return {
+    host: { x: a.x, z: a.z, yaw: yawTo(a.x, a.z, b.x, b.z) },
+    guest: { x: b.x, z: b.z, yaw: yawTo(b.x, b.z, a.x, a.z) }
+  };
+}
+
+function pickDuelSpawns() {
+  const all = [];
+  for (let i = 0; i < DUEL_SPAWN_RINGS.length; i++) {
+    for (let j = 0; j < DUEL_SPAWN_RINGS[i].length; j++) all.push(DUEL_SPAWN_RINGS[i][j]);
+  }
+  if (all.length < 2) return duelPair({ x: -3, z: 26 }, { x: -3, z: -26 });   // 理论到不了这
+
+  let fallback = null;
+  for (let t = 0; t < 400; t++) {
+    const a = all[(Math.random() * all.length) | 0];
+    const b = all[(Math.random() * all.length) | 0];
+    if (a === b) continue;
+    const d = Math.hypot(a.x - b.x, a.z - b.z);
+    if (d < 26 || d > 52) continue;                       // 不贴脸、也不太远
+    if (Math.abs(a.r - b.r) < 0.5) return duelPair(a, b);  // 同一环 = 最公平，直接采用
+    if (Math.abs(a.r - b.r) <= 6.5 && !fallback) fallback = [a, b];  // 相邻环也能接受
+  }
+  if (fallback) return duelPair(fallback[0], fallback[1]);
+  return duelPair({ x: -3, z: 26 }, { x: -3, z: -26 });
+}
+
+/* 本回合实际使用的出生点（房主抽签后同步给加入者） */
+let duelSpawns = duelPair({ x: -3, z: 26 }, { x: -3, z: -26 });
+
+const keys = {};
+const MOVE_KEYS = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space', 'ShiftLeft', 'ShiftRight', 'KeyR', 'Digit1', 'Digit2', 'Digit3'];
+
+window.addEventListener('keydown', function (e) {
+  if (MOVE_KEYS.indexOf(e.code) !== -1) e.preventDefault();
+  keys[e.code] = true;
+  if (e.code === 'Space' && running && locked && !gameOver && player.onGround) {
+    player.velY = 7.2;
+    player.onGround = false;
+  }
+  if (e.code === 'KeyR' && running && !gameOver) startReload();
+  const wk = WEAPON_KEYS[e.code];
+  if (wk && running && locked && !gameOver) switchWeapon(wk);
+});
+window.addEventListener('keyup', function (e) { keys[e.code] = false; });
+document.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+
+const UP = new THREE.Vector3(0, 1, 0);
+
+function updatePlayer(dt) {
+  const speed = (keys.ShiftLeft || keys.ShiftRight) ? 8.5 : 5.2;
+  const fwd = new THREE.Vector3();
+  camera.getWorldDirection(fwd);
+  fwd.y = 0;
+  fwd.normalize();
+  const right = new THREE.Vector3().crossVectors(fwd, UP).normalize();
+
+  let mx = 0, mz = 0;
+  if (keys.KeyW) { mx += fwd.x; mz += fwd.z; }
+  if (keys.KeyS) { mx -= fwd.x; mz -= fwd.z; }
+  if (keys.KeyD) { mx += right.x; mz += right.z; }
+  if (keys.KeyA) { mx -= right.x; mz -= right.z; }
+  const len = Math.hypot(mx, mz);
+  if (len > 0) { mx /= len; mz /= len; }
+
+  const nx = camera.position.x + mx * speed * dt;
+  const nz = camera.position.z + mz * speed * dt;
+  const resolved = collideCircle(nx, nz, player.radius);
+  camera.position.x = resolved[0];
+  camera.position.z = resolved[1];
+
+  player.velY -= 22 * dt;
+  const ny = camera.position.y + player.velY * dt;
+  if (ny <= player.eye) {
+    camera.position.y = player.eye;
+    player.velY = 0;
+    player.onGround = true;
+  } else {
+    camera.position.y = ny;
+    player.onGround = false;
+  }
+}
+
+/* ================= 武器系统 ================= */
+const WEAPON_DEFS = {
+  pistol:  { name: '手枪 P9',   badge: 'P9',  auto: false, fireRate: 3.5, spread: 0.004, pellets: 1, damage: 100, mag: 12, reloadTime: 1.1, kick: 0.012, gunKick: 0.08, gunTilt: 0.05, kickTime: 0.12 },
+  smg:     { name: '冲锋枪 MP5', badge: 'MP5', auto: true,  fireRate: 11,  spread: 0.05, pellets: 1, damage: 45,  mag: 30, reloadTime: 1.6, kick: 0.02, gunKick: 0.15, gunTilt: 0.1, kickTime: 0.09 },
+  shotgun: { name: '霰弹枪 M870', badge: 'M870', auto: false, fireRate: 1.2, spread: 0.09, pellets: 12, damage: 22, mag: 6,  reloadTime: 2.2, kick: 0.05, gunKick: 0.24, gunTilt: 0.18, kickTime: 0.18 }
+};
+const WEAPON_KEYS = { Digit1: 'pistol', Digit2: 'smg', Digit3: 'shotgun' };
+const WEAPON_ORDER = ['pistol', 'smg', 'shotgun'];
+
+let weaponKey = 'pistol';
+const savedWeapon = localStorage.getItem('fps.selectedWeapon');
+if (savedWeapon && WEAPON_DEFS[savedWeapon]) weaponKey = savedWeapon;
+const ammoByWeapon = { pistol: 12, smg: 30, shotgun: 6 };
+let ammo = ammoByWeapon[weaponKey];
+let mag = WEAPON_DEFS[weaponKey].mag;
+let reloading = false, reloadT = 0, fireCd = 0, firing = false, recoilT = 0, recoilPitch = 0, recoilYaw = 0;
+
+const metalMat = new THREE.MeshStandardMaterial({ color: 0x2b3038, metalness: 0.85, roughness: 0.35 });
+const darkMat = new THREE.MeshStandardMaterial({ color: 0x15181d, metalness: 0.6, roughness: 0.5 });
+const accentMat = new THREE.MeshStandardMaterial({ color: 0x8a5a2b, metalness: 0.5, roughness: 0.6 });
+
+function buildGunModel(key) {
+  const g = new THREE.Group();
+  if (key === 'pistol') {
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.14, 0.5), metalMat);
+    body.position.set(0.28, -0.22, -0.55);
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.35, 10), darkMat);
+    barrel.rotation.x = Math.PI / 2;
+    barrel.position.set(0.28, -0.2, -0.9);
+    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.18, 0.12), darkMat);
+    grip.position.set(0.28, -0.34, -0.45);
+    g.add(body, barrel, grip);
+  } else if (key === 'smg') {
+    const receiver = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.12, 0.72), metalMat);
+    receiver.position.set(0.26, -0.2, -0.55);
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.3, 10), darkMat);
+    barrel.rotation.x = Math.PI / 2;
+    barrel.position.set(0.26, -0.18, -1.0);
+    const mag2 = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.24, 0.12), accentMat);
+    mag2.position.set(0.26, -0.36, -0.42);
+    mag2.rotation.x = 0.18;
+    const stock = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.12, 0.24), darkMat);
+    stock.position.set(0.26, -0.2, -0.16);
+    const sight = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.05, 0.08), darkMat);
+    sight.position.set(0.26, -0.05, -0.7);
+    g.add(receiver, barrel, mag2, stock, sight);
+  } else {
+    const receiver = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.13, 0.62), metalMat);
+    receiver.position.set(0.3, -0.2, -0.5);
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.55, 12), darkMat);
+    barrel.rotation.x = Math.PI / 2;
+    barrel.position.set(0.3, -0.18, -1.05);
+    const barrel2 = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.28, 12), darkMat);
+    barrel2.rotation.x = Math.PI / 2;
+    barrel2.position.set(0.3, -0.18, -0.72);
+    const pump = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.32), accentMat);
+    pump.position.set(0.3, -0.3, -0.78);
+    const stock = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.13, 0.26), darkMat);
+    stock.position.set(0.3, -0.2, -0.12);
+    g.add(receiver, barrel, barrel2, pump, stock);
+  }
+  return g;
+}
+
+const gunModels = {};
+WEAPON_ORDER.forEach(function (k) {
+  const m = buildGunModel(k);
+  m.visible = (k === weaponKey);
+  camera.add(m);
+  gunModels[k] = m;
+});
+
+/* 单挑用：房主自身的受击盒。挂在相机下所以自动跟着人走，
+ * 材质全透明（opacity 0）保证自己看不见，但仍然能被射线命中，
+ * 这样加入者打过来的子弹才有个"身体"可以打到。
+ * 尺寸刻意和 makePlayerEntity 造出来的可见模型完全一致，保证双方一样好打。 */
+const hostHitbox = new THREE.Group();
+(function buildHostHitbox() {
+  const mat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false });
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.5, 1.1, 6, 14), mat);
+  body.position.y = -0.55;          // 可见模型躯干在世界 y=1.15，相机眼高 1.7
+  body.userData.isHostPart = true;
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.34, 16, 12), mat);
+  head.position.y = 0.25;           // 可见模型头部在世界 y=1.95
+  head.userData.isHostPart = true;
+  head.userData.head = true;
+  hostHitbox.add(body, head);
+  camera.add(hostHitbox);
+})();
+
+scene.add(camera);
+
+function switchWeapon(key) {
+  if (!WEAPON_DEFS[key] || key === weaponKey || reloading) return;
+  weaponKey = key;
+  ammo = ammoByWeapon[key];
+  mag = WEAPON_DEFS[key].mag;
+  for (const k in gunModels) gunModels[k].visible = (k === key);
+  playSwitch();
+  updateHud();
+}
+
+function startReload() {
+  const w = WEAPON_DEFS[weaponKey];
+  if (reloading || ammo >= w.mag) return;
+  reloading = true;
+  reloadT = w.reloadTime;
+  playReload();
+  updateHud();
+}
+
+function finishReload() {
+  const w = WEAPON_DEFS[weaponKey];
+  ammo = w.mag;
+  ammoByWeapon[weaponKey] = ammo;
+  reloading = false;
+  playReloadDone();
+  updateHud();
+}
+
+/* ================= 敌人 ================= */
+const ENEMY_COLORS = [0xd64545, 0xe08a3c, 0x8a3ce0, 0x3c8ae0, 0x3cbf8a, 0xd6458a];
+const enemies = [];
+let enemyId = 0;
+
+function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+
+function makeEnemy(x, z, color) {
+  const id = enemyId++;
+  const group = new THREE.Group();
+  const body = new THREE.Group();
+
+  const torso = new THREE.Mesh(
+    new THREE.CapsuleGeometry(0.5, 1.1, 6, 14),
+    new THREE.MeshStandardMaterial({ color: color, roughness: 0.5, metalness: 0.25 })
+  );
+  torso.position.y = 1.15;
+  torso.castShadow = true;
+
+  const head = new THREE.Mesh(
+    new THREE.SphereGeometry(0.34, 16, 12),
+    new THREE.MeshStandardMaterial({ color: 0x22262e, roughness: 0.4, metalness: 0.6 })
+  );
+  head.position.y = 1.95;
+  head.userData.head = true;
+
+  const eyeMat = new THREE.MeshStandardMaterial({ color: 0xff3030, emissive: 0xff2020, emissiveIntensity: 1.6 });
+  const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 8), eyeMat);
+  eyeL.position.set(-0.14, 1.98, 0.3);
+  const eyeR = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 8), eyeMat);
+  eyeR.position.set(0.14, 1.98, 0.3);
+
+  const antenna = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.02, 0.02, 0.35, 6),
+    new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.8, roughness: 0.3 })
+  );
+  antenna.position.y = 2.35;
+  const tip = new THREE.Mesh(
+    new THREE.SphereGeometry(0.06, 8, 8),
+    new THREE.MeshStandardMaterial({ color: 0xff4040, emissive: 0xff2020, emissiveIntensity: 1.5 })
+  );
+  tip.position.y = 2.55;
+
+  body.add(torso, head, eyeL, eyeR, antenna, tip);
+  group.add(body);
+  group.position.set(x, 0, z);
+  scene.add(group);
+
+  body.traverse(function (o) {
+    if (o.isMesh) {
+      o.userData.enemyId = id;
+      o.userData.isEnemyPart = true;
+      o.userData.origEmissive = o.material.emissive ? o.material.emissive.getHex() : 0;
+      o.userData.origEmissiveI = o.material.emissiveIntensity || 0;
+    }
+  });
+
+  const wps = [];
+  for (let i = 0; i < 4; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const r = 9 + Math.random() * 12;
+    wps.push([
+      clamp(x + Math.cos(a) * r, -ARENA + 4, ARENA - 4),
+      clamp(z + Math.sin(a) * r, -ARENA + 4, ARENA - 4)
+    ]);
+  }
+
+  const e = {
+    id: id, group: group, body: body, wps: wps, wp: 0,
+    state: 'patrol', hp: 100, alive: true, dying: 0, respawnT: 0, spawnT: 1,
+    attackCd: 0, attackAnim: 0, flash: 0, home: [x, z]
+  };
+  enemies.push(e);
+  return e;
+}
+
+const spawns = [
+  [-20, -18], [22, -22], [4, 26], [-28, 20], [30, 8], [-8, -34]
+];
+spawns.forEach(function (s, i) { makeEnemy(s[0], s[1], ENEMY_COLORS[i % ENEMY_COLORS.length]); });
+
+const losRay = new THREE.Raycaster();
+function hasLOS(e, target) {
+  const t = target || camera.position;
+  const eye = new THREE.Vector3(e.group.position.x, 1.95, e.group.position.z);
+  const dir = new THREE.Vector3().subVectors(t, eye);
+  const dist = dir.length();
+  if (dist < 0.5) return true;
+  dir.normalize();
+  losRay.set(eye, dir);
+  losRay.far = dist;
+  const hits = losRay.intersectObjects(obstacleMeshes, false);
+  return hits.length === 0;
+}
+
+function moveEnemy(e, dx, dz, dt, speed) {
+  const len = Math.hypot(dx, dz);
+  if (len < 0.001) return false;
+  const nx = e.group.position.x + dx / len * speed * dt;
+  const nz = e.group.position.z + dz / len * speed * dt;
+  const resolved = collideCircle(nx, nz, 0.55);
+  e.group.position.x = resolved[0];
+  e.group.position.z = resolved[1];
+  e.group.rotation.y = Math.atan2(dx, dz);
+  return true;
+}
+
+function setEnemyFlash(e, on) {
+  e.body.traverse(function (o) {
+    if (o.isMesh && o.material) {
+      const mat = o.material;
+      if (on) {
+        mat.emissive.setHex(0xff5544);
+        mat.emissiveIntensity = (o.userData.origEmissiveI || 0) + 1.0;
+      } else {
+        mat.emissive.setHex(o.userData.origEmissive || 0);
+        mat.emissiveIntensity = o.userData.origEmissiveI || 0;
+      }
+    }
+  });
+}
+
+function updateEnemies(dt, t) {
+  if (isDuel()) return;   // 单挑模式没有机器人
+  for (let i = 0; i < enemies.length; i++) {
+    const e = enemies[i];
+
+    if (e.spawnT < 1) {
+      e.spawnT = Math.min(1, e.spawnT + dt * 2.5);
+      e.group.scale.setScalar(Math.max(0.001, easeOutCubic(e.spawnT)));
+      continue;
+    }
+
+    if (!e.alive) {
+      if (e.dying > 0) {
+        e.dying -= dt;
+        e.group.scale.setScalar(Math.max(0.001, e.dying / 0.3));
+        if (e.dying <= 0) { e.group.visible = false; e.respawnT = 2.8; e.dying = 0; }
+      } else {
+        e.respawnT -= dt;
+        if (e.respawnT <= 0) {
+          e.alive = true;
+          e.hp = 100;
+          e.state = 'patrol';
+          e.attackCd = 0;
+          e.attackAnim = 0;
+          e.spawnT = 0;
+          e.flash = 0;
+          setEnemyFlash(e, false);
+          e.group.visible = true;
+          e.group.position.set(e.home[0], 0, e.home[1]);
+          e.group.rotation.y = 0;
+        }
+      }
+      continue;
+    }
+
+    if (e.flash > 0) {
+      e.flash -= dt;
+      if (e.flash <= 0) setEnemyFlash(e, false);
+    }
+
+    const dx = camera.position.x - e.group.position.x;
+    const dz = camera.position.z - e.group.position.z;
+    const dist = Math.hypot(dx, dz);
+    const canSee = dist < 22 && hasLOS(e);
+
+    if (canSee) {
+      e.state = 'chase';
+    } else if (e.state !== 'attack') {
+      e.state = 'patrol';
+    }
+
+    let moving = false;
+    if (e.state === 'chase') {
+      moving = moveEnemy(e, dx, dz, dt, 4.6);
+      if (canSee && dist < 2.6) {
+        e.attackCd -= dt;
+        if (e.attackCd <= 0) {
+          damagePlayer(10);
+          e.attackCd = 1.15;
+          e.attackAnim = 1;
+        }
+      }
+    } else {
+      const wp = e.wps[e.wp];
+      const wdx = wp[0] - e.group.position.x;
+      const wdz = wp[1] - e.group.position.z;
+      if (Math.hypot(wdx, wdz) < 1.2) e.wp = (e.wp + 1) % e.wps.length;
+      moving = moveEnemy(e, wdx, wdz, dt, 2.3);
+    }
+
+    e.body.position.y = moving ? Math.abs(Math.sin(t * 9)) * 0.08 : 0;
+    if (e.attackAnim > 0) {
+      e.attackAnim = Math.max(0, e.attackAnim - dt * 3);
+      e.body.rotation.x = Math.sin(e.attackAnim * Math.PI) * 0.9;
+    } else {
+      e.body.rotation.x *= 0.85;
+    }
+  }
+
+  /* 多人：房主权威——敌人攻击加入者 */
+  if (net && net.role === 'host' && guestSim.alive && running && !gameOver) {
+    guestAtkCd -= dt;
+    for (let i = 0; i < enemies.length; i++) {
+      const e = enemies[i];
+      if (!e.alive || e.spawnT < 1) continue;
+      const gdx = guestSim.x - e.group.position.x;
+      const gdz = guestSim.z - e.group.position.z;
+      const gd = Math.hypot(gdx, gdz);
+      if (gd < 2.8 && guestAtkCd <= 0 && hasLOS(e, new THREE.Vector3(guestSim.x, 1.7, guestSim.z))) {
+        guestAtkCd = 1.15;
+        guestSim.hp -= 10;
+        netSend({ type: 'hurt', amount: 10 });
+        if (guestSim.hp <= 0) {
+          guestSim.alive = false;
+          netSend({ type: 'gameover', winner: 'host' });
+          if (!gameOver) {
+            gameOver = true;
+            running = false;
+            try { document.exitPointerLock(); } catch (err) {}
+            showOverlay('游戏结束', '你赢了！对方已被击败', '再来一局', true);
+          }
+        }
+      }
+    }
+  }
+}
+
+function hitEnemy(e, dmg, headshot, forGuest) {
+  if (!e.alive) return;
+  e.hp -= dmg;
+  e.flash = 0.15;
+  setEnemyFlash(e, true);
+  if (!forGuest) showHitMarker();
+  if (e.hp <= 0) killEnemy(e, headshot, forGuest);
+}
+
+function killEnemy(e, headshot, forGuest) {
+  if (!e.alive) return;
+  e.alive = false;
+  e.dying = 0.3;
+  e.state = 'dead';
+  const pts = headshot ? 150 : 100;
+  if (forGuest) {
+    guestSim.score += pts;
+    guestSim.kills += 1;
+    netSend({ type: 'kill', headshot: !!headshot });
+  } else {
+    score += pts;
+    kills += 1;
+    playKill();
+    popScore(pts);
+    updateHud();
+  }
+}
+
+/* ================= 射击 ================= */
+const raycaster = new THREE.Raycaster();
+const muzzle = new THREE.PointLight(0xffc966, 0, 10, 2);
+muzzle.visible = false;
+scene.add(muzzle);
+
+const tracerGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
+const tracerMat = new THREE.LineBasicMaterial({ color: 0xffe066, transparent: true, opacity: 0.9 });
+const tracer = new THREE.Line(tracerGeo, tracerMat);
+tracer.visible = false;
+scene.add(tracer);
+
+let shootFlashT = null;
+
+function getAimDir(spread) {
+  const dir = new THREE.Vector3();
+  camera.getWorldDirection(dir);
+  if (spread <= 0) return dir;
+  const right = new THREE.Vector3().crossVectors(dir, UP).normalize();
+  const trueUp = new THREE.Vector3().crossVectors(right, dir).normalize();
+  const rx = (Math.random() - 0.5) * 2 * spread;
+  const ry = (Math.random() - 0.5) * 2 * spread;
+  dir.add(right.multiplyScalar(rx)).add(trueUp.multiplyScalar(ry)).normalize();
+  return dir;
+}
+
+function traceShot(dir, w) {
+  const parts = [];
+  if (isDuel()) {
+    /* 单挑：本地只负责打自己"看得见的对方模型"拿弹道终点；
+     * 命中反馈分方向——房主本地就结算，加入者等房主回 hit（避免打空气也弹命中标记）。 */
+    const ent = (net && net.role === 'host') ? guestEntity : hostEntity;
+    if (ent && ent.visible) ent.traverse(function (o) { if (o.isMesh) parts.push(o); });
+  } else {
+    for (let i = 0; i < enemies.length; i++) {
+      const e = enemies[i];
+      if (e.alive && e.spawnT >= 1) {
+        e.group.traverse(function (o) { if (o.isMesh) parts.push(o); });
+      }
+    }
+  }
+  const targets = parts.concat(obstacleMeshes);
+  raycaster.set(camera.position, dir);
+  raycaster.far = 120;
+  const hits = raycaster.intersectObjects(targets, false);
+  if (hits.length === 0) {
+    return camera.position.clone().add(dir.clone().multiplyScalar(80));
+  }
+  const h = hits[0];
+  if (h.object.userData.isEnemyPart) {
+    const e = enemies[h.object.userData.enemyId];
+    if (e && e.alive) {
+      const headshot = h.object.userData.head === true;
+      if (net && net.role === 'guest') {
+        showHitMarker();
+      } else {
+        hitEnemy(e, headshot ? w.damage * 1.5 : w.damage, headshot, false);
+      }
+    }
+  } else if (h.object.userData.isPlayerPart) {
+    if (net && net.role === 'host' && guestSim.alive) {
+      const headshot = h.object.userData.head === true;
+      hitGuestPlayer(headshot ? w.damage * 1.5 : w.damage, headshot);
+    }
+  }
+  return h.point;
+}
+
+/* 房主命中加入者 —— 单挑伤害由房主单方面结算，再同步血量过去 */
+function hitGuestPlayer(dmg, headshot) {
+  if (!net || net.role !== 'host' || !guestSim.alive || gameOver) return;
+  guestSim.hp = Math.max(0, guestSim.hp - dmg);
+  showHitMarker();
+  playHit();
+  netSend({ type: 'hurt', hp: guestSim.hp, amount: dmg, headshot: !!headshot });
+  if (guestSim.hp <= 0) {
+    guestSim.alive = false;
+    duelWins.host += 1;
+    endGame('你赢了！<br>' + escName(net.guestName || '对方') + ' 已被击败', 'host');
+  }
+  updateHud();
+}
+
+/* 房主自己的受击盒（加入者的子弹打过来时用来判定命中） */
+function hostHitParts() {
+  const parts = [];
+  hostHitbox.traverse(function (o) { if (o.isMesh) parts.push(o); });
+  return parts;
+}
+
+function canShoot() {
+  return running && locked && !gameOver && !reloading && fireCd <= 0 && ammo > 0;
+}
+
+function shoot() {
+  const w = WEAPON_DEFS[weaponKey];
+  if (!canShoot()) return;
+  ammo -= 1;
+  ammoByWeapon[weaponKey] = ammo;
+  fireCd = 1 / w.fireRate;
+  recoilT = w.kickTime;
+  recoilPitch += w.kick;
+  recoilYaw += (Math.random() - 0.5) * w.kick * 0.4;
+  ensureAudio();
+  if (weaponKey === 'pistol') playShot();
+  else if (weaponKey === 'smg') playSMG();
+  else playShotgun();
+
+  let end = null;
+  for (let i = 0; i < w.pellets; i++) {
+    const d = getAimDir(w.spread);
+    const p = traceShot(d, w);
+    if (i === 0) end = p;
+  }
+
+  const fwd = new THREE.Vector3();
+  camera.getWorldDirection(fwd);
+  const start = camera.position.clone().add(fwd.clone().multiplyScalar(0.5));
+  if (!end) end = camera.position.clone().add(fwd.clone().multiplyScalar(80));
+  tracerGeo.setFromPoints([start, end]);
+  tracer.visible = true;
+  tracer.material.opacity = 0.9;
+  muzzle.position.copy(start);
+  muzzle.visible = true;
+
+  if (shootFlashT) clearTimeout(shootFlashT);
+  shootFlashT = setTimeout(function () {
+    tracer.visible = false;
+    muzzle.visible = false;
+  }, 70);
+
+  if (net && net.role === 'guest') {
+    const nf = new THREE.Vector3();
+    camera.getWorldDirection(nf);
+    netSend({
+      type: 'shoot',
+      x: camera.position.x, y: camera.position.y, z: camera.position.z,
+      dx: nf.x, dy: nf.y, dz: nf.z
+    });
+  }
+
+  if (ammo <= 0) startReload();
+  updateHud();
+}
+
+document.addEventListener('mousedown', function (e) {
+  if (e.button !== 0 || !locked || !running || gameOver) return;
+  const w = WEAPON_DEFS[weaponKey];
+  if (w.auto) {
+    firing = true;
+    if (canShoot()) shoot();
+  } else if (canShoot()) {
+    shoot();
+  }
+});
+document.addEventListener('mouseup', function () { firing = false; });
+
+/* ================= 伤害 / 得分 / HUD ================= */
+let health = 100, score = 0, kills = 0;
+let running = false, locked = false, gameOver = false;
+
+const hpBar = document.getElementById('hpBar');
+const hpText = document.getElementById('hpText');
+const hpWrap = document.getElementById('hpWrap');
+const scoreEl = document.getElementById('score');
+const killsEl = document.getElementById('kills');
+const hitmarkerEl = document.getElementById('hitmarker');
+const damageVignette = document.getElementById('damageVignette');
+const scorePopup = document.getElementById('scorePopup');
+const weaponNameEl = document.getElementById('weaponName');
+const ammoCountEl = document.getElementById('ammoCount');
+const ammoMaxEl = document.getElementById('ammoMax');
+
+/* 单挑 HUD */
+const duelBar = document.getElementById('duelBar');
+const dbMyName = document.getElementById('dbMyName');
+const dbOpName = document.getElementById('dbOpName');
+const dbMyHp = document.getElementById('dbMyHp');
+const dbOpHp = document.getElementById('dbOpHp');
+const dbMyHpNum = document.getElementById('dbMyHpNum');
+const dbOpHpNum = document.getElementById('dbOpHpNum');
+const dbMyWins = document.getElementById('dbMyWins');
+const dbOpWins = document.getElementById('dbOpWins');
+const scoreWrapEl = document.getElementById('scoreWrap');
+const killsWrapEl = document.getElementById('killsWrap');
+
+/* 小地图：静态底图（围墙+木箱）+ 每帧绘制玩家/敌人 */
+const mmCanvas = document.getElementById('mmCanvas');
+const mmCtx = mmCanvas.getContext('2d');
+const MM_SIZE = mmCanvas.width;
+const MM_SCALE = MM_SIZE / (ARENA * 2);
+const mmBase = document.createElement('canvas');
+mmBase.width = MM_SIZE;
+mmBase.height = MM_SIZE;
+(function buildMinimapBase() {
+  const c = mmBase.getContext('2d');
+  c.fillStyle = 'rgba(22,30,38,0.72)';
+  c.fillRect(0, 0, MM_SIZE, MM_SIZE);
+  for (let i = 0; i < wallRects.length; i++) {
+    const o = wallRects[i];
+    c.fillStyle = '#98a2ac';
+    c.fillRect((o.minX + ARENA) * MM_SCALE, (o.minZ + ARENA) * MM_SCALE, Math.max(2, (o.maxX - o.minX) * MM_SCALE), Math.max(2, (o.maxZ - o.minZ) * MM_SCALE));
+  }
+  for (let i = 0; i < crateRects.length; i++) {
+    const o = crateRects[i];
+    c.fillStyle = '#b08968';
+    c.fillRect((o.minX + ARENA) * MM_SCALE, (o.minZ + ARENA) * MM_SCALE, Math.max(2.5, (o.maxX - o.minX) * MM_SCALE), Math.max(2.5, (o.maxZ - o.minZ) * MM_SCALE));
+  }
+  c.fillStyle = '#ffffff';
+  c.font = 'bold 11px sans-serif';
+  c.textAlign = 'center';
+  c.fillText('N', MM_SIZE / 2, 12);
+})();
+
+function drawMinimap() {
+  mmCtx.drawImage(mmBase, 0, 0);
+  const f = new THREE.Vector3();
+  camera.getWorldDirection(f);
+  const px = (camera.position.x + ARENA) * MM_SCALE;
+  const py = (camera.position.z + ARENA) * MM_SCALE;
+  if (isDuel()) {
+    /* 单挑：小地图上只标出对方 */
+    const o = (net && net.role === 'host')
+      ? { x: guestSim.x, z: guestSim.z, on: guestSim.alive }
+      : { x: hostSim.x, z: hostSim.z, on: hostSim.alive };
+    if (o.on) {
+      mmCtx.fillStyle = '#ff8a3c';
+      mmCtx.beginPath();
+      mmCtx.arc((o.x + ARENA) * MM_SCALE, (o.z + ARENA) * MM_SCALE, 5, 0, Math.PI * 2);
+      mmCtx.fill();
+      mmCtx.strokeStyle = 'rgba(255,255,255,.85)';
+      mmCtx.lineWidth = 1.2;
+      mmCtx.stroke();
+    }
+  } else {
+    for (let i = 0; i < enemies.length; i++) {
+      const e = enemies[i];
+      if (!e.alive) continue;
+      const ex = (e.group.position.x + ARENA) * MM_SCALE;
+      const ez = (e.group.position.z + ARENA) * MM_SCALE;
+      mmCtx.fillStyle = e.state === 'chase' ? '#ff8a3c' : '#ff5252';
+      mmCtx.beginPath();
+      mmCtx.arc(ex, ez, 3, 0, Math.PI * 2);
+      mmCtx.fill();
+    }
+  }
+  mmCtx.save();
+  mmCtx.translate(px, py);
+  mmCtx.rotate(Math.atan2(f.x, -f.z));
+  mmCtx.fillStyle = '#ffffff';
+  mmCtx.strokeStyle = 'rgba(0,0,0,.6)';
+  mmCtx.lineWidth = 1;
+  mmCtx.beginPath();
+  mmCtx.moveTo(0, -7);
+  mmCtx.lineTo(4.5, 5);
+  mmCtx.lineTo(0, 2.5);
+  mmCtx.lineTo(-4.5, 5);
+  mmCtx.closePath();
+  mmCtx.fill();
+  mmCtx.stroke();
+  mmCtx.restore();
+}
+
+let hmT = null, dmgT = null, spT = null;
+
+function updateHud() {
+  hpBar.style.width = health + '%';
+  hpText.textContent = Math.ceil(health);
+  scoreEl.textContent = score;
+  killsEl.textContent = kills;
+  hpWrap.classList.toggle('low', health <= 30);
+  ammoCountEl.textContent = ammo;
+  ammoMaxEl.textContent = mag;
+  weaponNameEl.textContent = reloading
+    ? '换弹中… ' + Math.ceil(reloadT) + 's'
+    : WEAPON_DEFS[weaponKey].name;
+  updateDuelBar();
+}
+
+/* 单挑顶栏：左边自己、右边对方，中间回合比分（比分由房主权威下发） */
+function updateDuelBar() {
+  const on = isDuel() && !!(net && net.roomId);
+  duelBar.classList.toggle('on', on);
+  scoreWrapEl.style.display = on ? 'none' : '';
+  killsWrapEl.style.display = on ? 'none' : '';
+  if (!on) return;
+  const iAmGuest = net.role === 'guest';
+  dbMyName.textContent = (iAmGuest ? net.guestName : net.hostName) || '你';
+  dbOpName.textContent = (iAmGuest ? net.hostName : net.guestName) || '对方';
+  /* 对方血量：房主直接读 guestSim，加入者用房主下发的值 */
+  const myHp = clamp(health, 0, 100);
+  const opHp = clamp(iAmGuest ? opHealth : guestSim.hp, 0, 100);
+  dbMyHp.style.width = myHp + '%';
+  dbOpHp.style.width = opHp + '%';
+  dbMyHpNum.textContent = Math.max(0, Math.ceil(myHp));
+  dbOpHpNum.textContent = Math.max(0, Math.ceil(opHp));
+  dbMyWins.textContent = iAmGuest ? duelWins.guest : duelWins.host;
+  dbOpWins.textContent = iAmGuest ? duelWins.host : duelWins.guest;
+}
+
+function showHitMarker() {
+  hitmarkerEl.classList.add('show');
+  if (hmT) clearTimeout(hmT);
+  hmT = setTimeout(function () { hitmarkerEl.classList.remove('show'); }, 130);
+}
+
+function popScore(pts) {
+  scorePopup.textContent = '+' + pts;
+  scorePopup.classList.remove('show');
+  void scorePopup.offsetWidth;
+  scorePopup.classList.add('show');
+  if (spT) clearTimeout(spT);
+  spT = setTimeout(function () { scorePopup.classList.remove('show'); }, 650);
+}
+
+function flashDamage() {
+  damageVignette.style.opacity = '0.75';
+  if (dmgT) clearTimeout(dmgT);
+  dmgT = setTimeout(function () { damageVignette.style.opacity = '0'; }, 130);
+}
+
+function damagePlayer(amount) {
+  if (gameOver || !running) return;
+  health = Math.max(0, health - amount);
+  flashDamage();
+  playHurt();
+  updateHud();
+  if (health <= 0) {
+    if (isDuel()) {
+      /* 单挑里只有房主会走到这（加入者血量由房主下发），房主一死即对方获胜 */
+      duelWins.guest += 1;
+      endGame('你被击败了<br>' + escName((net && net.guestName) || '对方') + ' 获胜', 'guest');
+    } else {
+      endGame();
+    }
+  }
+}
+
+/* winner 只有单挑才传：本地判定完再把结果告诉对方 */
+function endGame(winText, winner) {
+  gameOver = true;
+  running = false;
+  firing = false;
+  try { document.exitPointerLock(); } catch (err) {}
+  if (winner && net && net.connected && net.roomId) {
+    netSend({ type: 'gameover', winner: winner, wins: { host: duelWins.host, guest: duelWins.guest } });
+  }
+  showOverlay('游戏结束', winText || ('得分 ' + score + ' · 消灭 ' + kills + ' 个敌人<br><br>机器人重新占领了基地……'), '再来一局', !!(net && net.connected && net.roomId));
+  updateHud();
+}
+
+/* 按当前模式显示/隐藏机器人：单挑模式场上不该有机器人 */
+function applyModeEntities() {
+  const duel = isDuel();
+  for (let i = 0; i < enemies.length; i++) {
+    const e = enemies[i];
+    e.group.visible = duel ? false : !!e.alive;
+    if (!duel && e.alive) e.group.scale.setScalar(e.spawnT >= 1 ? 1 : Math.max(0.001, easeOutCubic(e.spawnT)));
+  }
+}
+
+function resetGame() {
+  health = 100; score = 0; kills = 0; gameOver = false; running = true;
+  firing = false; reloading = false; reloadT = 0; fireCd = 0; recoilT = 0; recoilPitch = 0; recoilYaw = 0;
+  for (const k in gunModels) { gunModels[k].position.z = 0; gunModels[k].rotation.x = 0; }
+  ammo = WEAPON_DEFS[weaponKey].mag;
+  ammoByWeapon[weaponKey] = ammo;
+  if (net && net.role === 'host') {
+    guestSim.hp = 100;
+    guestSim.score = 0;
+    guestSim.kills = 0;
+    guestSim.alive = true;
+  }
+  if (isDuel()) {
+    /* 单挑：用本回合抽到的随机出生点，双方相向而立；场上没有机器人 */
+    const iAmGuest = !!(net && net.role === 'guest');
+    const sp = iAmGuest ? duelSpawns.guest : duelSpawns.host;
+    camera.position.set(sp.x, player.eye, sp.z);
+    camera.rotation.set(0, sp.yaw, 0);
+    camera.rotation.order = 'YXZ';
+    player.velY = 0; player.onGround = true;
+    opHealth = 100;
+    hostSim.alive = false;
+    if (!iAmGuest) {
+      /* 房主顺手把对方的模拟位置摆到它的出生点，免得开打头几帧它还停在上回合的地方 */
+      guestSim.x = duelSpawns.guest.x;
+      guestSim.z = duelSpawns.guest.z;
+      guestSim.yaw = duelSpawns.guest.yaw;
+    }
+    if (guestEntity) guestEntity.visible = false;
+    if (hostEntity) hostEntity.visible = false;
+    applyModeEntities();
+    updateHud();
+    return;
+  }
+  camera.position.set(0, 1.7, 0);
+  camera.rotation.set(0, 0, 0);
+  camera.rotation.order = 'YXZ';
+  player.velY = 0; player.onGround = true;
+  for (let i = 0; i < enemies.length; i++) {
+    const e = enemies[i];
+    e.alive = true; e.hp = 100; e.state = 'patrol';
+    e.dying = 0; e.respawnT = 0; e.spawnT = 1; e.flash = 0;
+    e.attackCd = 0; e.attackAnim = 0; e.body.rotation.x = 0;
+    setEnemyFlash(e, false);
+    e.group.visible = true;
+    e.group.scale.setScalar(1);
+    e.group.position.set(e.home[0], 0, e.home[1]);
+    e.group.rotation.y = 0;
+  }
+  updateHud();
+}
+
+/* ================= 音频（WebAudio 程序化音效） ================= */
+let actx = null;
+function ensureAudio() {
+  if (!actx) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (AC) actx = new AC();
+  }
+  if (actx && actx.state === 'suspended') actx.resume();
+}
+function noiseBuffer(seconds) {
+  const len = Math.floor(actx.sampleRate * seconds);
+  const buf = actx.createBuffer(1, len, actx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+  return buf;
+}
+function noiseShot(dur, vol, cutoff0, cutoff1) {
+  if (!actx) return;
+  const t = actx.currentTime;
+  const src = actx.createBufferSource();
+  src.buffer = noiseBuffer(dur);
+  const g = actx.createGain();
+  g.gain.setValueAtTime(vol, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  const f = actx.createBiquadFilter();
+  f.type = 'lowpass';
+  f.frequency.setValueAtTime(cutoff0, t);
+  f.frequency.exponentialRampToValueAtTime(cutoff1, t + dur);
+  src.connect(f);
+  f.connect(g);
+  g.connect(actx.destination);
+  src.start(t);
+}
+function beep(f0, f1, dur, vol, type) {
+  if (!actx) return;
+  const t = actx.currentTime;
+  const o = actx.createOscillator();
+  o.type = type || 'sine';
+  o.frequency.setValueAtTime(f0, t);
+  o.frequency.exponentialRampToValueAtTime(Math.max(1, f1), t + dur);
+  const g = actx.createGain();
+  g.gain.setValueAtTime(vol, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  o.connect(g);
+  g.connect(actx.destination);
+  o.start(t);
+  o.stop(t + dur + 0.02);
+}
+function playShot() {
+  noiseShot(0.14, 0.5, 4000, 300);
+  beep(140, 45, 0.1, 0.28, 'square');
+}
+function playSMG() {
+  noiseShot(0.08, 0.32, 3500, 400);
+  beep(220, 90, 0.06, 0.16, 'square');
+}
+function playShotgun() {
+  noiseShot(0.3, 0.65, 1800, 120);
+  beep(90, 28, 0.28, 0.5, 'sine');
+}
+function playHit() { beep(880, 260, 0.09, 0.25); }
+function playHurt() { beep(130, 55, 0.22, 0.5, 'square'); }
+function playKill() { beep(660, 1320, 0.12, 0.3); setTimeout(function () { beep(990, 1980, 0.14, 0.25); }, 90); }
+function playReload() {
+  beep(500, 420, 0.05, 0.2, 'square');
+  setTimeout(function () { beep(700, 600, 0.05, 0.2, 'square'); }, 200);
+}
+function playReloadDone() { beep(900, 1100, 0.08, 0.22, 'square'); }
+function playSwitch() { beep(600, 800, 0.06, 0.15, 'square'); }
+
+/* ================= 联机大厅（服务器中继 · 房主权威对战） =================
+ * 服务器：在本目录运行 node server.js 后，用浏览器打开 http://<服务器IP>:8000。
+ * 大厅由服务器统一管理：昵称 / 房间列表 / 创建·加入·离开 / 对局消息中继。
+ * 对局仍为房主权威：房主机器跑完整模拟（敌人AI、伤害、胜负结算），
+ * 加入者只上传自身位置与开火，接收房主的同步帧。 */
+
+let net = null;   // { ws, connected, role:'host'|'guest'|null, roomId, hostName, guestName }
+let guestSim = { x: 0, z: 0, yaw: 0, hp: 100, score: 0, kills: 0, weapon: 'pistol', alive: true };
+let guestEntity = null;
+let hostEntity = null;
+let guestAtkCd = 0;
+let netTimer = 0;
+let returnToLobbyPending = false;
+let pendingJoin = null;
+let lobbyRooms = [];
+let myName = '';
+try { myName = localStorage.getItem('fps.netName') || ''; } catch (e) {}
+
+function saveNickLocal(n) { try { localStorage.setItem('fps.netName', n); } catch (e) {} }
+function defaultName() { return '玩家' + Math.floor(1000 + Math.random() * 9000); }
+
+function makePlayerEntity(color) {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(
+    new THREE.CapsuleGeometry(0.5, 1.1, 6, 14),
+    new THREE.MeshStandardMaterial({ color: color, roughness: 0.6, metalness: 0.2 })
+  );
+  body.position.y = 1.15;
+  body.castShadow = true;
+  body.userData.isPlayerPart = true;
+  const head = new THREE.Mesh(
+    new THREE.SphereGeometry(0.34, 16, 12),
+    new THREE.MeshStandardMaterial({ color: 0x22262e, roughness: 0.4, metalness: 0.6 })
+  );
+  head.position.y = 1.95;
+  head.userData.isPlayerPart = true;
+  head.userData.head = true;
+  g.add(body, head);
+  return g;
+}
+
+function removePeerEntity() {
+  if (guestEntity) { scene.remove(guestEntity); guestEntity = null; }
+  if (hostEntity) { scene.remove(hostEntity); hostEntity = null; }
+}
+
+function sendServer(obj) {
+  if (net && net.ws && net.ws.readyState === 1) net.ws.send(JSON.stringify(obj));
+}
+function netSend(obj) {
+  if (net && net.connected && net.roomId) sendServer({ type: 'roomMsg', data: obj });
+}
+
+/* ---------- 大厅界面元素 ---------- */
+const lobbyPanel = document.getElementById('lobbyPanel');
+const lpConn = document.getElementById('lpConn');
+const lpNick = document.getElementById('lpNick');
+const lpAddr = document.getElementById('lpAddr');
+const lpSave = document.getElementById('lpSave');
+const lpConnectBtn = document.getElementById('lpConnect');
+const lpCount = document.getElementById('lpCount');
+const lpRooms = document.getElementById('lpRooms');
+const lpStatus = document.getElementById('lpStatus');
+const lpCreate = document.getElementById('lpCreate');
+const lpRefresh = document.getElementById('lpRefresh');
+const lpBack = document.getElementById('lpBack');
+const waitRoom = document.getElementById('waitRoom');
+const waitCode = document.getElementById('waitCode');
+const waitCopy = document.getElementById('waitCopy');
+const waitMembers = document.getElementById('waitMembers');
+const waitStatus = document.getElementById('waitStatus');
+const waitStart = document.getElementById('waitStart');
+const waitLeave = document.getElementById('waitLeave');
+const overlayLobbyBtn = document.getElementById('overlayLobbyBtn');
+lpNick.value = myName;
+
+function setLpConn(state, text) {
+  lpConn.className = 'lp-conn' + (state === 'ok' ? ' lp-ok' : (state === 'err' ? ' lp-err' : ''));
+  lpConn.textContent = text;
+}
+
+function escName(s) {
+  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function getWsUrl() {
+  const manual = lpAddr.value.trim();
+  if (manual) return (/^wss?:\/\//i.test(manual) ? manual : 'ws://' + manual);
+  if (location.protocol === 'http:' || location.protocol === 'https:') {
+    return (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host;
+  }
+  return 'ws://127.0.0.1:8000';
+}
+
+function connectLobby() {
+  if (net && net.ws && (net.ws.readyState === 0 || net.ws.readyState === 1)) {
+    if (net.ws.readyState === 1) { setLpConn('ok', '已连接'); lpStatus.textContent = ''; }
+    return;
+  }
+  const addr = getWsUrl();
+  setLpConn('', '连接中…');
+  lpStatus.textContent = '正在连接 ' + addr + ' …';
+  let ws;
+  try { ws = new WebSocket(addr); } catch (e) {
+    setLpConn('err', '地址无效');
+    lpStatus.textContent = '无法连接：' + e.message;
+    return;
+  }
+  net = { ws: ws, connected: false, role: null, roomId: null, hostName: '', guestName: null };
+  ws.onopen = function () {
+    net.connected = true;
+    setLpConn('ok', '已连接');
+    lpStatus.textContent = '';
+    sendServer({ type: 'login', name: myName || defaultName() });
+  };
+  ws.onmessage = function (ev) {
+    let m;
+    try { m = JSON.parse(ev.data); } catch (e) { return; }
+    handleServerMsg(m);
+  };
+  ws.onerror = function () {
+    setLpConn('err', '连接失败');
+    lpStatus.textContent = '连接失败：请确认服务器已运行（node server.js），并检查地址与防火墙';
+  };
+  ws.onclose = function () {
+    const wasConnected = !!(net && net.connected);
+    const wasInRoom = !!(net && net.roomId);
+    net = null;
+    setLpConn('err', '已断开');
+    if (wasConnected && wasInRoom) {
+      exitRoomLocal();
+      returnToLobbyPending = true;
+      showOverlay('连接已断开', '与联机大厅服务器的连接中断了，请检查服务器是否仍在运行', '返回大厅', true);
+    } else {
+      lpStatus.textContent = '与服务器断开，可修改地址后点【连接】重试';
+    }
+  };
+}
+
+/* ---------- 服务器消息分发 ---------- */
+function handleServerMsg(m) {
+  if (m.type === 'loginOk') {
+    myName = m.name;
+    saveNickLocal(myName);
+    lpNick.value = myName;
+    if (pendingJoin) { const id = pendingJoin; pendingJoin = null; sendServer({ type: 'joinRoom', roomId: id }); }
+    return;
+  }
+  if (m.type === 'lobbyState') {
+    lobbyRooms = m.rooms || [];
+    renderLobbyRooms();
+    return;
+  }
+  if (m.type === 'roomCreated') { enterRoom('host', m.room); return; }
+  if (m.type === 'roomJoined') { enterRoom('guest', m.room); return; }
+  if (m.type === 'peerJoined') {
+    if (net && net.role === 'host' && m.playerName) {
+      net.guestName = m.playerName;
+      showWaitRoom('host');
+      showModeNotice('玩家 ' + m.playerName + ' 已加入！');
+    }
+    return;
+  }
+  if (m.type === 'peerLeft') {
+    if (net && net.role === 'host') {
+      net.guestName = null;
+      if (running || gameOver) { netPeerGone('对方已断开'); }
+      else { showWaitRoom('host'); showModeNotice('对方已离开房间'); }
+    }
+    return;
+  }
+  if (m.type === 'roomClosed') {
+    if (running || gameOver || countdownActive) { netPeerGone('房间已解散', '房主已离开，对局结束'); }
+    else { goBackToLobby(); showModeNotice('房主已解散房间'); }
+    return;
+  }
+  if (m.type === 'roomMsg') { handleNetMsg(m.data); return; }
+  if (m.type === 'roomFull') {
+    lpStatus.textContent = '无法加入：' + (m.reason || '房间已满');
+    showModeNotice('无法加入该房间');
+    return;
+  }
+  if (m.type === 'error') { showModeNotice(m.message || '操作失败'); }
+}
+
+/* ---------- 大厅 / 等待室流程 ---------- */
+function showLobby() {
+  returnToLobbyPending = false;
+  modeSelect.style.display = 'none';
+  weaponSelect.style.display = 'none';
+  overlayDesc.style.display = 'none';
+  waitRoom.style.display = 'none';
+  overlayBtn.style.display = 'none';
+  overlayLobbyBtn.style.display = 'none';
+  lobbyPanel.style.display = 'flex';
+  overlay.classList.remove('hidden');
+  lpNick.value = myName;
+  renderLobbyRooms();
+  if (!net || !net.connected) connectLobby();
+  else setLpConn('ok', '已连接');
+}
+
+function renderLobbyRooms() {
+  if (!lobbyPanel || lobbyPanel.style.display !== 'flex') return;
+  lpCount.textContent = lobbyRooms.length ? ('房间 ' + lobbyRooms.length + ' 间 · 每间 2 人') : '暂无房间';
+  if (!lobbyRooms.length) {
+    lpRooms.innerHTML = '<div class="lp-empty">大厅空空的——点「＋ 创建房间」开一局，<br>把 4 位房间号告诉朋友，对方输入后即可加入</div>';
+    return;
+  }
+  let html = '';
+  for (let i = 0; i < lobbyRooms.length; i++) {
+    const r = lobbyRooms[i];
+    const open = r.players < r.maxPlayers && r.state === 'waiting';
+    let tagText = '等待加入';
+    let tagCls = '';
+    if (r.state === 'playing') { tagText = '对战中'; tagCls = ' play'; }
+    else if (r.players >= r.maxPlayers) { tagText = '已满'; tagCls = ' full'; }
+    const btn = open
+      ? '<button class="np-btn" data-join="' + r.id + '">加入</button>'
+      : '<button class="np-btn" disabled>不可加入</button>';
+    html += '<div class="lp-room">' +
+      '<span class="lp-rm-id">' + r.id + '</span>' +
+      '<span class="lp-rm-info">房主 <span class="lp-rm-host">' + escName(r.hostName) + '</span> · ' + r.players + '/' + r.maxPlayers + ' 人</span>' +
+      '<span class="lp-rm-tag' + tagCls + '">' + tagText + '</span>' +
+      btn +
+      '</div>';
+  }
+  lpRooms.innerHTML = html;
+}
+
+function enterRoom(role, room) {
+  removePeerEntity();
+  net.role = role;
+  net.roomId = room.id;
+  net.hostName = (role === 'host') ? myName : (room.hostName || '房主');
+  net.guestName = (role === 'guest') ? myName : (room.guestName || null);
+  if (role === 'host') {
+    guestEntity = makePlayerEntity(0x3c8ae0);
+    scene.add(guestEntity);
+    guestEntity.visible = false;
+  } else {
+    hostEntity = makePlayerEntity(0xe08a3c);
+    scene.add(hostEntity);
+    hostEntity.visible = false;
+  }
+  lobbyPanel.style.display = 'none';
+  waitRoom.style.display = 'flex';
+  waitCode.textContent = room.id;
+  overlay.classList.remove('hidden');
+  updateHud();
+  showWaitRoom(role);
+}
+
+function showWaitRoom(role) {
+  const hName = (net && net.hostName) || '房主';
+  const gName = net ? net.guestName : null;
+  const code = waitCode.textContent || '';
+  if (role === 'host') {
+    waitMembers.innerHTML =
+      '<div class="wm-item"><span>房主（你）· ' + escName(hName) + '</span><span class="wm-tag">✓ 在线</span></div>' +
+      '<div class="wm-item"><span>加入者' + (gName ? ' · ' + escName(gName) : '') + '</span>' +
+      '<span class="wm-tag' + (gName ? '' : ' wm-wait') + '">' + (gName ? '✓ 已加入' : '等待加入…') + '</span></div>';
+    waitStart.disabled = !gName;
+    waitStatus.textContent = gName
+      ? '两名玩家已就绪，点【开始游戏】开始 1v1 单挑（场上没有机器人，只有你们两个）'
+      : '把房间号 ' + code + ' 发给朋友，让他在大厅输入框加入（或直接点列表里的【加入】）';
+  } else {
+    waitMembers.innerHTML =
+      '<div class="wm-item"><span>房主 · ' + escName(hName) + '</span><span class="wm-tag">✓ 在线</span></div>' +
+      '<div class="wm-item"><span>加入者（你）· ' + escName(gName || myName) + '</span><span class="wm-tag">✓ 已加入</span></div>';
+    waitStart.disabled = true;
+    waitStart.textContent = '等待房主开始…';
+    waitStatus.textContent = '已加入房间 ' + code + '，等待房主开始游戏…';
+  }
+}
+
+function exitRoomLocal() {
+  removePeerEntity();
+  try { document.exitPointerLock(); } catch (e) {}
+  running = false;
+  firing = false;
+  gameOver = false;
+  if (countdownOverlay) countdownOverlay.style.display = 'none';
+  if (countT) { clearInterval(countT); countT = null; }
+  countdownActive = false;
+  pendingStart = false;
+  if (net) { net.role = null; net.roomId = null; net.hostName = ''; net.guestName = null; }
+  updateHud();
+}
+
+function netPeerGone(title, desc) {
+  exitRoomLocal();
+  returnToLobbyPending = true;
+  showOverlay(title || '对方已断开', desc || '对局已中断，返回大厅吧', '返回大厅', true);
+}
+
+function goBackToLobby() {
+  const wasInRoom = !!(net && net.connected && net.roomId);
+  if (wasInRoom) sendServer({ type: 'leaveRoom' });
+  exitRoomLocal();
+  returnToLobbyPending = false;
+  pendingJoin = null;
+  showLobby();
+  if (wasInRoom) lpStatus.textContent = '已返回大厅';
+}
+
+function saveNick() {
+  if (net && net.roomId) {
+    lpNick.value = myName;
+    showModeNotice('对局/房间内不能改名，返回大厅后再改');
+    return;
+  }
+  let n = (lpNick.value || '').trim() || defaultName();
+  n = n.replace(/[\\\/<>"'&]/g, '').trim() || defaultName();
+  const arr = Array.from(n);
+  if (arr.length > 12) n = arr.slice(0, 12).join('');
+  myName = n;
+  lpNick.value = n;
+  saveNickLocal(n);
+  if (net && net.connected) sendServer({ type: 'login', name: myName });
+  showModeNotice('昵称已设为 ' + myName);
+}
+
+function copyRoomCode() {
+  const code = waitCode.textContent || '';
+  if (!code) return;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(code).then(function () {
+      showModeNotice('房间号已复制：' + code);
+    }, function () { manualCopyRoom(code); });
+  } else manualCopyRoom(code);
+}
+function manualCopyRoom(t) {
+  const ta = document.createElement('textarea');
+  ta.value = t;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); showModeNotice('房间号已复制：' + t); }
+  catch (e) { showModeNotice('请手动记下房间号：' + t); }
+  document.body.removeChild(ta);
+}
+
+function hostStartMatch() {
+  if (!net || !net.connected || !net.roomId || net.role !== 'host' || !net.guestName) return;
+  sendServer({ type: 'roomState', state: 'playing' });
+  if (isDuel()) rollDuelSpawns();
+  netSend({ type: 'start' });
+  hideOverlay();
+  resetGame();
+  startCountdown(3, function () { running = true; lockPointer(); });
+}
+
+function beginMatchAsGuest() {
+  hideOverlay();
+  resetGame();
+  startCountdown(3, function () { running = true; lockPointer(); });
+}
+
+/* 加入者被判负时的本地收尾（正常由房主的 gameover 触发，这里是兜底不卡死） */
+function guestShowDefeat() {
+  if (gameOver) return;
+  gameOver = true;
+  running = false;
+  firing = false;
+  try { document.exitPointerLock(); } catch (e) {}
+  showOverlay('游戏结束', '你被击败了<br>' + escName((net && net.hostName) || '房主') + ' 获胜', '再来一局', true);
+  updateHud();
+}
+
+/* 房主抽签决定本回合出生点，并同步给加入者。
+ * 必须先于 start / reset 发出去，加入者收到后才好照这个位置站。 */
+function rollDuelSpawns() {
+  duelSpawns = pickDuelSpawns();
+  netSend({ type: 'spawns', host: duelSpawns.host, guest: duelSpawns.guest });
+}
+
+/* 开新一局：由房主统一发起，两边同时重置并倒计时 */
+function startDuelRound() {
+  rollDuelSpawns();
+  resetGame();
+  netSend({ type: 'reset' });
+  hideOverlay();
+  startCountdown(3, function () { running = true; lockPointer(); });
+}
+
+/* ---------- 对局消息（房主权威） ---------- */
+function handleNetMsg(m) {
+  if (!net || !net.connected) return;
+  if (net.role === 'host') hostHandleMsg(m);
+  else if (net.role === 'guest') guestHandleMsg(m);
+}
+
+function hostHandleMsg(m) {
+  if (m.type === 'me') {
+    guestSim.x = m.x; guestSim.z = m.z; guestSim.yaw = m.yaw;
+    guestSim.weapon = m.weapon || guestSim.weapon;
+    if (guestEntity) guestEntity.rotation.y = m.yaw;
+    return;
+  }
+  if (m.type === 'shoot') { hostHandleShoot(m); return; }
+  if (m.type === 'gameover') {
+    /* 单挑：胜负由房主单方面裁定，不采信加入者的结论 */
+    if (isDuel()) return;
+    // 加入者端报告它已被击败 => 本机胜
+    if (!gameOver) {
+      gameOver = true;
+      running = false;
+      try { document.exitPointerLock(); } catch (e) {}
+      showOverlay('游戏结束', '你赢了！对方已被击败', '再来一局', true);
+    }
+    return;
+  }
+  if (m.type === 'reset') {
+    if (countdownActive) return;
+    if (gameOver) {
+      if (isDuel()) startDuelRound();
+      else { resetGame(); hideOverlay(); startCountdown(3, function () { running = true; lockPointer(); }); }
+    }
+    return;
+  }
+}
+
+function hostHandleShoot(m) {
+  if (isDuel()) { hostHandleDuelShoot(m); return; }
+  const w = WEAPON_DEFS[guestSim.weapon] || WEAPON_DEFS.pistol;
+  const origin = new THREE.Vector3(m.x, m.y, m.z);
+  const parts = [];
+  for (let i = 0; i < enemies.length; i++) {
+    const e = enemies[i];
+    if (e.alive && e.spawnT >= 1) {
+      e.group.traverse(function (o) { if (o.isMesh) parts.push(o); });
+    }
+  }
+  for (let i = 0; i < w.pellets; i++) {
+    const dir = new THREE.Vector3(m.dx, m.dy, m.dz).normalize();
+    if (w.spread > 0) {
+      const right = new THREE.Vector3().crossVectors(dir, UP).normalize();
+      const trueUp = new THREE.Vector3().crossVectors(right, dir).normalize();
+      dir.add(right.multiplyScalar((Math.random() - 0.5) * 2 * w.spread));
+      dir.add(trueUp.multiplyScalar((Math.random() - 0.5) * 2 * w.spread));
+      dir.normalize();
+    }
+    raycaster.set(origin, dir);
+    raycaster.far = 120;
+    const enemyHits = raycaster.intersectObjects(parts, false);
+    const wallHits = raycaster.intersectObjects(obstacleMeshes, false);
+    const wallD = wallHits.length ? wallHits[0].distance : Infinity;
+    if (enemyHits.length && enemyHits[0].distance < wallD) {
+      const h = enemyHits[0];
+      if (h.object.userData.isEnemyPart) {
+        const e = enemies[h.object.userData.enemyId];
+        if (e && e.alive) {
+          const headshot = h.object.userData.head === true;
+          hitEnemy(e, headshot ? w.damage * 1.5 : w.damage, headshot, true);
+        }
+      }
+    }
+  }
+}
+
+/* 单挑：加入者开火 → 房主拿"房主自己的受击盒"裁决，命中就往自己身上扣血 */
+function hostHandleDuelShoot(m) {
+  if (!running || gameOver || !guestSim.alive) return;
+  if (![m.x, m.y, m.z, m.dx, m.dy, m.dz].every(function (v) { return typeof v === 'number' && isFinite(v); })) return;
+  const w = WEAPON_DEFS[guestSim.weapon] || WEAPON_DEFS.pistol;
+  const origin = new THREE.Vector3(m.x, m.y, m.z);
+  const targets = hostHitParts().concat(obstacleMeshes);
+  let hitAny = false, headAny = false;
+  for (let i = 0; i < w.pellets; i++) {
+    if (gameOver) break;                       // 中途被打死就不用再算了
+    const dir = new THREE.Vector3(m.dx, m.dy, m.dz).normalize();
+    if (w.spread > 0) {
+      const right = new THREE.Vector3().crossVectors(dir, UP).normalize();
+      const trueUp = new THREE.Vector3().crossVectors(right, dir).normalize();
+      dir.add(right.multiplyScalar((Math.random() - 0.5) * 2 * w.spread));
+      dir.add(trueUp.multiplyScalar((Math.random() - 0.5) * 2 * w.spread));
+      dir.normalize();
+    }
+    raycaster.set(origin, dir);
+    raycaster.far = 120;
+    const hits = raycaster.intersectObjects(targets, false);   // 已按距离排序，墙体挡枪自然生效
+    if (!hits.length) continue;
+    const h = hits[0];
+    if (h.object.userData.isHostPart) {
+      hitAny = true;
+      const headshot = h.object.userData.head === true;
+      if (headshot) headAny = true;
+      damagePlayer(headshot ? w.damage * 1.5 : w.damage);
+    }
+  }
+  if (hitAny) netSend({ type: 'hit', headshot: headAny });
+}
+
+function guestHandleMsg(m) {
+  if (m.type === 'spawns') {
+    /* 房主抽好的本回合出生点，照它站位 */
+    if (m.host && typeof m.host.x === 'number' && typeof m.host.z === 'number') {
+      duelSpawns.host = { x: m.host.x, z: m.host.z, yaw: m.host.yaw || 0 };
+    }
+    if (m.guest && typeof m.guest.x === 'number' && typeof m.guest.z === 'number') {
+      duelSpawns.guest = { x: m.guest.x, z: m.guest.z, yaw: m.guest.yaw || 0 };
+    }
+    return;
+  }
+  if (m.type === 'start') { beginMatchAsGuest(); return; }
+  if (m.type === 'snap') {
+    if (countdownActive) return;
+    if (!running) { running = true; lockPointer(); }
+    if (hostEntity) {
+      hostEntity.position.set(m.host.x, m.host.y, m.host.z);
+      hostEntity.rotation.y = m.host.yaw;
+      hostEntity.visible = !!m.host.alive;
+    }
+    if (isDuel()) {
+      /* 单挑：双方血量全部以房主为准，本地只做表现 */
+      if (typeof m.host.hp === 'number') opHealth = m.host.hp;
+      if (m.guest && typeof m.guest.hp === 'number') health = m.guest.hp;
+      if (m.wins) { duelWins.host = m.wins.host | 0; duelWins.guest = m.wins.guest | 0; }
+      hostSim.x = m.host.x; hostSim.z = m.host.z; hostSim.alive = !!m.host.alive;
+      if (health <= 0) guestShowDefeat();      // 兜底：万一 gameover 没收到也不会卡在 0 血
+      updateHud();
+      return;
+    }
+    const arr = m.enemies || [];
+    for (let i = 0; i < arr.length; i++) {
+      const s = arr[i];
+      const e = enemies[s.i];
+      if (!e) continue;
+      e.group.position.x = s.x;
+      e.group.position.z = s.z;
+      e.group.rotation.y = s.yaw || 0;
+      if (s.alive) {
+        e.group.visible = true;
+        e.group.scale.setScalar(s.spawnT >= 1 ? 1 : (s.scale || 0.01));
+      } else {
+        e.group.visible = false;
+      }
+    }
+    return;
+  }
+  if (m.type === 'kill') {
+    const pts = m.headshot ? 150 : 100;
+    score += pts;
+    kills += 1;
+    playKill();
+    popScore(pts);
+    showHitMarker();
+    updateHud();
+    return;
+  }
+  if (m.type === 'hit') { showHitMarker(); playHit(); return; }
+  if (m.type === 'hurt') {
+    /* 单挑：血量以房主下发的为准，这里只做受击表现，胜负交给 gameover 收尾 */
+    if (typeof m.hp === 'number') health = m.hp;
+    flashDamage();
+    playHurt();
+    updateHud();
+    return;
+  }
+  if (m.type === 'gameover') {
+    if (gameOver) return;
+    const iWon = m.winner === 'guest';
+    gameOver = true;
+    running = false;
+    firing = false;
+    if (m.wins) { duelWins.host = m.wins.host | 0; duelWins.guest = m.wins.guest | 0; }
+    try { document.exitPointerLock(); } catch (e) {}
+    const hn = escName((net && net.hostName) || '房主');
+    showOverlay('游戏结束',
+      isDuel()
+        ? (iWon ? '你赢了！<br>' + hn + ' 已被击败' : '你被击败了<br>' + hn + ' 获胜')
+        : (iWon ? '你赢了！房主已被击败' : '你被击败了<br>房主获胜'),
+      '再来一局', true);
+    updateHud();
+    return;
+  }
+  if (m.type === 'reset') {
+    if (countdownActive) return;
+    if (gameOver) beginMatchAsGuest();
+    return;
+  }
+}
+
+/* ---------- 界面事件 ---------- */
+lpConnectBtn.addEventListener('click', function () { connectLobby(); });
+lpSave.addEventListener('click', function () { saveNick(); });
+lpNick.addEventListener('keydown', function (e) { if (e.key === 'Enter') saveNick(); });
+lpCreate.addEventListener('click', function () {
+  if (!net || !net.connected) { lpStatus.textContent = '尚未连接服务器，先点【连接】'; return; }
+  sendServer({ type: 'createRoom' });
+  lpStatus.textContent = '正在创建房间…';
+});
+lpRefresh.addEventListener('click', function () {
+  if (net && net.connected) { sendServer({ type: 'getLobby' }); lpStatus.textContent = '已刷新'; }
+  else { renderLobbyRooms(); lpStatus.textContent = '未连接，仅显示缓存列表'; }
+});
+lpBack.addEventListener('click', function () { showStartScreen(); });
+lpRooms.addEventListener('click', function (e) {
+  const btn = e.target.closest ? e.target.closest('[data-join]') : null;
+  if (!btn) return;
+  const id = btn.getAttribute('data-join');
+  if (!net || !net.connected) {
+    pendingJoin = id;
+    connectLobby();
+    lpStatus.textContent = '连接中…连上后将自动加入房间 ' + id;
+    return;
+  }
+  sendServer({ type: 'joinRoom', roomId: id });
+  lpStatus.textContent = '正在加入房间 ' + id + ' …';
+});
+waitStart.addEventListener('click', function () { hostStartMatch(); });
+waitCopy.addEventListener('click', function () { copyRoomCode(); });
+waitLeave.addEventListener('click', function () { goBackToLobby(); });
+overlayLobbyBtn.addEventListener('click', function (e) { e.stopPropagation(); goBackToLobby(); });
+lobbyPanel.addEventListener('click', function (e) { e.stopPropagation(); });
+waitRoom.addEventListener('click', function (e) { e.stopPropagation(); });
+/* ================= 开始 / 暂停 / 重开 ================= */
+const overlay = document.getElementById('overlay');
+const overlayTitle = document.getElementById('overlayTitle');
+const overlayDesc = document.getElementById('overlayDesc');
+const overlayBtn = document.getElementById('overlayBtn');
+const weaponSelect = document.getElementById('weaponSelect');
+const modeSelect = document.getElementById('modeSelect');
+const modeNotice = document.getElementById('modeNotice');
+
+function showOverlay(title, desc, btnText, showLobbyBtn) {
+  overlayTitle.textContent = title;
+  overlayDesc.innerHTML = desc;
+  overlayBtn.textContent = btnText;
+  weaponSelect.style.display = 'none';
+  modeSelect.style.display = 'none';
+  lobbyPanel.style.display = 'none';
+  waitRoom.style.display = 'none';
+  overlayLobbyBtn.style.display = (showLobbyBtn && net && net.connected && net.roomId) ? 'inline-block' : 'none';
+  overlayDesc.style.display = '';
+  overlayBtn.style.display = '';
+  overlay.classList.remove('hidden');
+}
+
+/* 开始界面说明随模式切换：单人是打机器人，单挑是打对方 */
+function updateStartDesc() {
+  overlayDesc.innerHTML = isDuel()
+    ? '<kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 移动 ｜ 鼠标 瞄准 ｜ <kbd>左键</kbd> 射击 ｜ <kbd>空格</kbd> 跳跃 ｜ <kbd>Shift</kbd> 加速<br><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> 切换武器 ｜ <kbd>R</kbd> 换弹 ｜ <b>1v1 单挑</b>：把对面打没血就赢一回合'
+    : '<kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 移动 ｜ 鼠标 瞄准 ｜ <kbd>左键</kbd> 射击 ｜ <kbd>空格</kbd> 跳跃 ｜ <kbd>Shift</kbd> 加速<br><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> 切换武器 ｜ <kbd>R</kbd> 换弹 ｜ 敌人发现你之后会追击并攻击你！';
+}
+
+function showStartScreen() {
+  returnToLobbyPending = false;
+  overlayTitle.textContent = '3D 第一人称射击';
+  updateStartDesc();
+  overlayBtn.textContent = '点击开始';
+  weaponSelect.style.display = 'flex';
+  modeSelect.style.display = 'flex';
+  lobbyPanel.style.display = 'none';
+  waitRoom.style.display = 'none';
+  overlayLobbyBtn.style.display = 'none';
+  overlayDesc.style.display = '';
+  overlayBtn.style.display = '';
+  overlay.classList.remove('hidden');
+}
+
+function hideOverlay() { overlay.classList.add('hidden'); }
+
+function lockPointer() {
+  try {
+    const p = renderer.domElement.requestPointerLock();
+    if (p && typeof p.catch === 'function') p.catch(function () {});
+  } catch (err) {}
+}
+
+let modeNoticeT = null;
+function showModeNotice(text) {
+  modeNotice.textContent = text || '';
+  modeNotice.classList.add('show');
+  if (modeNoticeT) clearTimeout(modeNoticeT);
+  modeNoticeT = setTimeout(function () { modeNotice.classList.remove('show'); }, 2200);
+}
+
+/* 开局三秒倒计时 */
+const countdownOverlay = document.getElementById('countdownOverlay');
+const countdownNum = document.getElementById('countdownNum');
+const countdownSub = document.getElementById('countdownSub');
+let countdownActive = false;
+let pendingStart = false;
+let countT = null;
+
+function startCountdown(seconds, onDone) {
+  countdownActive = true;
+  pendingStart = false;
+  let n = seconds;
+  countdownNum.textContent = n;
+  countdownSub.textContent = '准备战斗';
+  countdownOverlay.style.display = 'flex';
+  clearInterval(countT);
+  countT = setInterval(function () {
+    n--;
+    if (n > 0) {
+      countdownNum.textContent = n;
+      countdownNum.style.animation = 'none';
+      void countdownNum.offsetWidth;
+      countdownNum.style.animation = '';
+    } else {
+      countdownNum.textContent = 'GO!';
+      countdownSub.textContent = '';
+      clearInterval(countT);
+      setTimeout(function () {
+        countdownOverlay.style.display = 'none';
+        countdownActive = false;
+        if (onDone) onDone();
+      }, 600);
+    }
+  }, 1000);
+}
+
+function startOrResume() {
+  if (returnToLobbyPending) { returnToLobbyPending = false; goBackToLobby(); return; }
+  if (gameMode === 'multi') {
+    if (!net || !net.connected) {
+      showLobby();
+      return;
+    }
+    if (gameOver) {
+      /* 单挑的重开统一由房主发起，加入者只发个请求，避免两边各重置一次 */
+      if (net.role === 'host') startDuelRound();
+      else netSend({ type: 'reset' });
+      return;
+    }
+    hideOverlay();
+    lockPointer();
+    return;
+  }
+  ensureAudio();
+  if (gameOver) {
+    startCountdown(3, function () {
+      hideOverlay();
+      resetGame();
+      running = true;
+      lockPointer();
+    });
+    if (net && net.connected) netSend({ type: 'reset' });
+  } else if (!running) {
+    startCountdown(3, function () {
+      hideOverlay();
+      resetGame();
+      running = true;
+      lockPointer();
+    });
+  } else {
+    hideOverlay();
+    lockPointer();
+  }
+}
+
+overlay.addEventListener('click', startOrResume);
+
+const modeCards = document.querySelectorAll('.mode-card');
+modeCards.forEach(function (card) {
+  card.addEventListener('click', function (e) {
+    e.stopPropagation();
+    modeCards.forEach(function (c) { c.classList.remove('selected'); });
+    card.classList.add('selected');
+    gameMode = card.getAttribute('data-mode');
+    applyModeEntities();
+    updateStartDesc();
+    if (gameMode === 'multi') showLobby();
+  });
+});
+
+const weaponCards = document.querySelectorAll('.weapon-card');
+weaponCards.forEach(function (card) {
+  card.addEventListener('click', function (e) {
+    e.stopPropagation();
+    weaponCards.forEach(function (c) { c.classList.remove('selected'); });
+    card.classList.add('selected');
+    weaponKey = card.getAttribute('data-weapon');
+    ammo = ammoByWeapon[weaponKey];
+    mag = WEAPON_DEFS[weaponKey].mag;
+    reloading = false;
+    for (const k in gunModels) gunModels[k].visible = (k === weaponKey);
+    localStorage.setItem('fps.selectedWeapon', weaponKey);
+    playSwitch();
+    updateHud();
+  });
+});
+
+weaponCards.forEach(function (card) {
+  card.classList.toggle('selected', card.getAttribute('data-weapon') === weaponKey);
+});
+
+document.addEventListener('pointerlockchange', function () {
+  locked = document.pointerLockElement === renderer.domElement;
+  if (!locked) firing = false;
+  if (!locked && running && !gameOver) {
+    showOverlay('已暂停', '点击任意位置继续战斗', '继 续', true);
+  }
+});
+document.addEventListener('pointerlockerror', function () {
+  showOverlay('指针锁定失败', '浏览器限制：退出锁定后需稍等 1 秒，请再试一次', '再试一次');
+});
+
+/* ================= 主循环 ================= */
+let last = performance.now();
+
+function animate(now) {
+  requestAnimationFrame(animate);
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+
+  if (running && locked && !gameOver) {
+    fireCd -= dt;
+    if (reloading) {
+      reloadT -= dt;
+      if (reloadT <= 0) finishReload();
+      else updateHud();
+    }
+    const curW = WEAPON_DEFS[weaponKey];
+    if (recoilT > 0) {
+      recoilT -= dt;
+      const p = Math.max(0, recoilT / curW.kickTime);
+      gunModels[weaponKey].position.z = p * curW.gunKick;
+      gunModels[weaponKey].rotation.x = p * curW.gunTilt;
+    } else if (gunModels[weaponKey].position.z !== 0 || gunModels[weaponKey].rotation.x !== 0) {
+      gunModels[weaponKey].position.z *= 0.8;
+      gunModels[weaponKey].rotation.x *= 0.8;
+      if (Math.abs(gunModels[weaponKey].position.z) < 0.001) gunModels[weaponKey].position.z = 0;
+      if (Math.abs(gunModels[weaponKey].rotation.x) < 0.001) gunModels[weaponKey].rotation.x = 0;
+    }
+    if (recoilPitch > 0.0001 || recoilYaw > 0.0001) {
+      const f = Math.min(1, dt * 14);
+      camera.rotation.x += recoilPitch * f;
+      camera.rotation.y += recoilYaw * f;
+      recoilPitch -= recoilPitch * f;
+      recoilYaw -= recoilYaw * f;
+    }
+    if (firing && WEAPON_DEFS[weaponKey].auto && canShoot()) shoot();
+    updatePlayer(dt);
+    if (!(net && net.role === 'guest')) updateEnemies(dt, now / 1000);
+
+    if (net && net.role === 'host' && running) {
+      netTimer -= dt;
+      if (netTimer <= 0) {
+        netTimer = 0.06;
+        netSend({
+          type: 'snap',
+          host: {
+            x: camera.position.x, y: camera.position.y, z: camera.position.z,
+            yaw: camera.rotation.y, alive: !gameOver && health > 0, hp: health
+          },
+          guest: { hp: guestSim.hp, alive: guestSim.alive },
+          wins: { host: duelWins.host, guest: duelWins.guest },
+          enemies: isDuel() ? [] : enemies.map(function (e, i) {
+            return {
+              i: i, x: e.group.position.x, z: e.group.position.z,
+              yaw: e.group.rotation.y, state: e.state, alive: e.alive,
+              spawnT: e.spawnT, scale: e.group.scale.x
+            };
+          })
+        });
+      }
+    } else if (net && net.role === 'guest' && running && locked) {
+      netTimer -= dt;
+      if (netTimer <= 0) {
+        netTimer = 0.05;
+        netSend({ type: 'me', x: camera.position.x, z: camera.position.z, yaw: camera.rotation.y, weapon: weaponKey });
+      }
+    }
+  }
+
+  if (guestEntity) {
+    guestEntity.position.set(guestSim.x, 0, guestSim.z);
+    guestEntity.rotation.y = guestSim.yaw;
+    guestEntity.visible = guestSim.alive && net && net.connected;
+  }
+
+  drawMinimap();
+  renderer.render(scene, camera);
+}
+
+window.addEventListener('resize', function () {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+updateHud();
+showStartScreen();
+requestAnimationFrame(animate);
+
+/* ================= 调试 / 自动化测试入口 =================
+ * 正常玩不会用到。想排查问题时可以在浏览器控制台里敲 __fps.state() 看当前状态。
+ * forceLock 是给无头浏览器测试用的（headless 下拿不到鼠标指针锁定）。 */
+window.__fps = {
+  state: function () {
+    return {
+      gameMode: gameMode, isDuel: isDuel(),
+      running: running, locked: locked, gameOver: gameOver,
+      health: health, opHealth: opHealth, score: score, kills: kills,
+      wins: { host: duelWins.host, guest: duelWins.guest },
+      role: net && net.role, roomId: net && net.roomId,
+      hostName: net && net.hostName, guestName: net && net.guestName,
+      pos: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
+      yaw: camera.rotation.y,
+      enemiesVisible: enemies.filter(function (e) { return e.group.visible; }).length,
+      guestSim: { x: guestSim.x, z: guestSim.z, hp: guestSim.hp, alive: guestSim.alive },
+      hostSim: { x: hostSim.x, z: hostSim.z, alive: hostSim.alive },
+      duelBarOn: duelBar.classList.contains('on'),
+      spawns: { host: { x: duelSpawns.host.x, z: duelSpawns.host.z, yaw: duelSpawns.host.yaw },
+                guest: { x: duelSpawns.guest.x, z: duelSpawns.guest.z, yaw: duelSpawns.guest.yaw } },
+      spawnCandidateCount: DUEL_SPAWN_RINGS.reduce(function (n, r) { return n + r.length; }, 0),
+      spawnClearHere: spawnClear(camera.position.x, camera.position.z),
+      hpText: hpText.textContent, opHpText: dbOpHpNum.textContent,
+      myWins: dbMyWins.textContent, opWins: dbOpWins.textContent,
+      overlayTitle: overlayTitle.textContent, overlayDesc: overlayDesc.textContent,
+      overlayHidden: overlay.classList.contains('hidden')
+    };
+  },
+  aimAt: function (x, z) {
+    camera.rotation.y = Math.atan2(-(x - camera.position.x), -(z - camera.position.z));
+    camera.rotation.x = 0;
+  },
+  teleport: function (x, z) { camera.position.x = x; camera.position.z = z; },
+  sampleSpawns: function (n) {
+    const out = [];
+    for (let i = 0; i < (n || 10); i++) out.push(pickDuelSpawns());
+    return out;
+  },
+  checkSpawnClear: function (x, z) { return spawnClear(x, z); },
+  fire: function () { fireCd = 0; shoot(); },
+  forceLock: function (v) { locked = !!v; }
+};
+</script>
+</body>
+</html>
