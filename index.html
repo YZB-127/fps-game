@@ -60,7 +60,7 @@
   #scorePopup{position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);font-size:34px;font-weight:900;color:#ffd166;opacity:0;text-shadow:0 0 12px rgba(255,180,40,.9);transition:all .5s}
   #scorePopup.show{opacity:1;transform:translate(-50%,-90%)}
 
-  #overlay{position:fixed;inset:0;z-index:20;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(8,12,18,.86);backdrop-filter:blur(5px);color:#fff;text-align:center;cursor:pointer}
+  #overlay{position:fixed;inset:0;z-index:20;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(8,12,18,.86);backdrop-filter:blur(5px);color:#fff;text-align:center;cursor:default}
   #overlay.hidden{display:none}
   #overlay h1{font-size:46px;letter-spacing:6px;background:linear-gradient(90deg,#ffd166,#ff8a5c);-webkit-background-clip:text;background-clip:text;color:transparent;margin-bottom:12px;font-weight:900}
   #overlayDesc{color:#c7d2e0;font-size:15px;line-height:2;margin-bottom:22px;max-width:620px}
@@ -581,23 +581,31 @@ WEAPON_ORDER.forEach(function (k) {
   gunModels[k] = m;
 });
 
-/* 单挑用：房主自身的受击盒。挂在相机下所以自动跟着人走，
- * 材质全透明（opacity 0）保证自己看不见，但仍然能被射线命中，
- * 这样加入者打过来的子弹才有个"身体"可以打到。
- * 尺寸刻意和 makePlayerEntity 造出来的可见模型完全一致，保证双方一样好打。 */
-const hostHitbox = new THREE.Group();
-(function buildHostHitbox() {
+/* 受击体积：胶囊躯干 + 头部球。全透明（opacity 0）所以看不见，但射线打得到。
+ * 房主自己身上那个和对手可见模型里那个用的是同一个函数、同一套尺寸，
+ * 这样"看到打哪"和"实际打哪"永远一致，两个方向也一样好打。 */
+function makeHitVolume(marker) {
   const mat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false });
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.5, 1.1, 6, 14), mat);
-  body.position.y = -0.55;          // 可见模型躯干在世界 y=1.15，相机眼高 1.7
-  body.userData.isHostPart = true;
+  const g = new THREE.Group();
+  /* 躯干刻意做到 y≈0.10~1.80，把 y=1.95 的头部整个让出来：
+   * 之前躯干半径 0.5、顶部到 2.2，头球(1.61~2.29)整个埋在躯干上半球里，
+   * 结果任何一发子弹都先打中躯干 —— 爆头判定形同虚设。 */
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.42, 0.86, 6, 14), mat);
+  body.position.y = 0.95;
+  body.userData[marker] = true;
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.34, 16, 12), mat);
-  head.position.y = 0.25;           // 可见模型头部在世界 y=1.95
-  head.userData.isHostPart = true;
+  head.position.y = 1.95;
+  head.userData[marker] = true;
   head.userData.head = true;
-  hostHitbox.add(body, head);
-  camera.add(hostHitbox);
-})();
+  g.add(body, head);
+  return g;
+}
+
+/* 单挑用：房主自身的受击盒。挂在相机下所以自动跟着人走，
+ * 这样加入者打过来的子弹才有个"身体"可以打到。 */
+const hostHitbox = makeHitVolume('isHostPart');
+hostHitbox.position.y = -player.eye;      // 相机在眼高，整体下沉，让受击盒落回地面坐标系
+camera.add(hostHitbox);
 
 scene.add(camera);
 
@@ -919,7 +927,7 @@ function traceShot(dir, w) {
     /* 单挑：本地只负责打自己"看得见的对方模型"拿弹道终点；
      * 命中反馈分方向——房主本地就结算，加入者等房主回 hit（避免打空气也弹命中标记）。 */
     const ent = (net && net.role === 'host') ? guestEntity : hostEntity;
-    if (ent && ent.visible) ent.traverse(function (o) { if (o.isMesh) parts.push(o); });
+    if (ent && ent.visible) ent.traverse(function (o) { if (o.isMesh && o.userData.isPlayerPart) parts.push(o); });
   } else {
     for (let i = 0; i < enemies.length; i++) {
       const e = enemies[i];
@@ -1045,7 +1053,7 @@ document.addEventListener('mousedown', function (e) {
 document.addEventListener('mouseup', function () { firing = false; });
 
 /* ================= 伤害 / 得分 / HUD ================= */
-let health = 100, score = 0, kills = 0;
+let health = 100, score = 0, kills = 0, lastDamage = 0;
 let running = false, locked = false, gameOver = false;
 
 const hpBar = document.getElementById('hpBar');
@@ -1210,6 +1218,7 @@ function flashDamage() {
 
 function damagePlayer(amount) {
   if (gameOver || !running) return;
+  lastDamage = amount;
   health = Math.max(0, health - amount);
   flashDamage();
   playHurt();
@@ -1274,6 +1283,7 @@ function resetGame() {
       /* 房主顺手把对方的模拟位置摆到它的出生点，免得开打头几帧它还停在上回合的地方 */
       guestSim.x = duelSpawns.guest.x;
       guestSim.z = duelSpawns.guest.z;
+      guestSim.y = player.eye;
       guestSim.yaw = duelSpawns.guest.yaw;
     }
     if (guestEntity) guestEntity.visible = false;
@@ -1377,7 +1387,7 @@ function playSwitch() { beep(600, 800, 0.06, 0.15, 'square'); }
  * 加入者只上传自身位置与开火，接收房主的同步帧。 */
 
 let net = null;   // { ws, connected, role:'host'|'guest'|null, roomId, hostName, guestName }
-let guestSim = { x: 0, z: 0, yaw: 0, hp: 100, score: 0, kills: 0, weapon: 'pistol', alive: true };
+let guestSim = { x: 0, z: 0, y: 1.7, yaw: 0, hp: 100, score: 0, kills: 0, weapon: 'pistol', alive: true };
 let guestEntity = null;
 let hostEntity = null;
 let guestAtkCd = 0;
@@ -1391,23 +1401,87 @@ try { myName = localStorage.getItem('fps.netName') || ''; } catch (e) {}
 function saveNickLocal(n) { try { localStorage.setItem('fps.netName', n); } catch (e) {} }
 function defaultName() { return '玩家' + Math.floor(1000 + Math.random() * 9000); }
 
+/* 两点之间连一根圆柱，用来做胳膊和腿 */
+function limbBetween(a, b, r, mat) {
+  const dir = new THREE.Vector3().subVectors(b, a);
+  const len = dir.length() || 0.001;
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 6), mat);
+  m.position.copy(a).addScaledVector(dir, 0.5);
+  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize());
+  return m;
+}
+
+/* 手里的枪：buildGunModel 是给第一人称相机空间做的（贴着镜头所以很小），
+ * 挂到第三人称模型上要抬高到胸口、稍微放大，远看才有"举着枪"的剪影 */
+function buildHeldGun(key) {
+  const g = buildGunModel(key);
+  g.position.set(0, 1.45, 0);
+  g.scale.setScalar(1.2);
+  return g;
+}
+
+/* 换对手手里的枪（跟着对方实际切换的武器变） */
+function setEntityWeapon(ent, key) {
+  if (!ent || !ent.userData || !ent.userData.gunSlot) return;
+  const k = WEAPON_DEFS[key] ? key : 'pistol';
+  if (ent.userData.gunKey === k) return;
+  ent.userData.gunKey = k;
+  const slot = ent.userData.gunSlot;
+  if (slot.clear) slot.clear();
+  else while (slot.children.length) slot.remove(slot.children[0]);
+  slot.add(buildHeldGun(k));
+}
+
+/* 对手/自己的可见模型（原点在脚底，面朝 -Z，和 rotation.y = yaw 的约定一致）。
+ * 之所以不用胶囊+球那种对称体：那样根本看不出对方朝哪、有没有举枪。
+ * 这里给了躯干朝向、背包、眼睛（自发光）和手里的枪，一眼就能读出来。 */
 function makePlayerEntity(color) {
   const g = new THREE.Group();
-  const body = new THREE.Mesh(
-    new THREE.CapsuleGeometry(0.5, 1.1, 6, 14),
-    new THREE.MeshStandardMaterial({ color: color, roughness: 0.6, metalness: 0.2 })
-  );
-  body.position.y = 1.15;
-  body.castShadow = true;
-  body.userData.isPlayerPart = true;
-  const head = new THREE.Mesh(
-    new THREE.SphereGeometry(0.34, 16, 12),
-    new THREE.MeshStandardMaterial({ color: 0x22262e, roughness: 0.4, metalness: 0.6 })
-  );
-  head.position.y = 1.95;
-  head.userData.isPlayerPart = true;
-  head.userData.head = true;
-  g.add(body, head);
+  const suit = new THREE.MeshStandardMaterial({ color: color, roughness: 0.62, metalness: 0.18 });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x1b1f26, roughness: 0.5, metalness: 0.4 });
+  const gear = new THREE.MeshStandardMaterial({ color: 0x2f3742, roughness: 0.85, metalness: 0.1 });
+
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.86, 1.0, 0.46), suit);
+  torso.position.set(0, 1.24, 0);
+  torso.castShadow = true;
+
+  const hips = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.34, 0.42), gear);
+  hips.position.set(0, 0.54, 0);
+
+  const backpack = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.62, 0.24), gear);
+  backpack.position.set(0, 1.26, 0.34);      // 背在背后 => 从后面也能看出朝向
+
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.32, 16, 14), dark);
+  head.position.set(0, 1.95, 0);
+  head.castShadow = true;
+
+  const visor = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.15, 0.1),
+    new THREE.MeshStandardMaterial({ color: 0x0a0d11, roughness: 0.22, metalness: 0.75 }));
+  visor.position.set(0, 1.98, -0.25);
+
+  const eyeMat = new THREE.MeshStandardMaterial({ color: 0x9ff4ff, emissive: 0x2fd6ff, emissiveIntensity: 2.4 });
+  const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.062, 10, 8), eyeMat);
+  eyeL.position.set(-0.115, 1.99, -0.30);
+  const eyeR = eyeL.clone();
+  eyeR.position.x = 0.115;
+
+  g.add(torso, hips, backpack, head, visor, eyeL, eyeR);
+
+  const V = function (x, y, z) { return new THREE.Vector3(x, y, z); };
+  g.add(limbBetween(V(-0.21, 0.48, 0), V(-0.21, 0.05, 0), 0.13, gear));   // 腿
+  g.add(limbBetween(V(0.21, 0.48, 0), V(0.21, 0.05, 0), 0.13, gear));
+  /* 手臂正好收在枪的握把/护木上，别挡在枪前面（挡了远看就分不清拿没拿枪） */
+  g.add(limbBetween(V(-0.41, 1.52, 0), V(0.20, 1.10, -0.62), 0.085, suit));
+  g.add(limbBetween(V(0.41, 1.52, 0), V(0.34, 1.05, -0.54), 0.085, suit));
+
+  const gunSlot = new THREE.Group();
+  g.add(gunSlot);
+  g.userData.gunSlot = gunSlot;
+  g.userData.gunKey = null;
+  setEntityWeapon(g, 'pistol');
+
+  /* 真正参与命中判定的只有这个（上面那些装饰都不是受击盒） */
+  g.add(makeHitVolume('isPlayerPart'));
   return g;
 }
 
@@ -1767,7 +1841,11 @@ function handleNetMsg(m) {
 function hostHandleMsg(m) {
   if (m.type === 'me') {
     guestSim.x = m.x; guestSim.z = m.z; guestSim.yaw = m.yaw;
-    guestSim.weapon = m.weapon || guestSim.weapon;
+    if (typeof m.y === 'number' && isFinite(m.y)) guestSim.y = m.y;   // 眼高，能反映跳跃
+    if (m.weapon && m.weapon !== guestSim.weapon) {
+      guestSim.weapon = m.weapon;
+      setEntityWeapon(guestEntity, guestSim.weapon);                  // 对方换枪，手里的模型跟着换
+    }
     if (guestEntity) guestEntity.rotation.y = m.yaw;
     return;
   }
@@ -1881,9 +1959,12 @@ function guestHandleMsg(m) {
     if (countdownActive) return;
     if (!running) { running = true; lockPointer(); }
     if (hostEntity) {
-      hostEntity.position.set(m.host.x, m.host.y, m.host.z);
+      /* m.host.y 是房主的眼高；模型原点在脚底，减掉眼高才是该站的高度 */
+      const feetY = (typeof m.host.y === 'number' ? m.host.y : player.eye) - player.eye;
+      hostEntity.position.set(m.host.x, feetY, m.host.z);
       hostEntity.rotation.y = m.host.yaw;
       hostEntity.visible = !!m.host.alive;
+      setEntityWeapon(hostEntity, m.host.weapon);
     }
     if (isDuel()) {
       /* 单挑：双方血量全部以房主为准，本地只做表现 */
@@ -2088,6 +2169,13 @@ function startCountdown(seconds, onDone) {
 
 function startOrResume() {
   if (returnToLobbyPending) { returnToLobbyPending = false; goBackToLobby(); return; }
+  /* 大厅 / 等待室里点空白什么都不该发生。
+   * 这两个面板是挂在 #overlay 里的，而 overlay 整块绑了"点击开始"，
+   * 面板内部的点击虽然 stopPropagation 了，但面板外面的空白照样会冒泡上来，
+   * 结果就是在大厅里随便点一下空白直接被丢进对局。 */
+  if (lobbyPanel.style.display === 'flex' || waitRoom.style.display === 'flex') return;
+  /* 倒计时进行中：任何点击都不该把它重新数一遍 */
+  if (countdownActive) return;
   if (gameMode === 'multi') {
     if (!net || !net.connected) {
       showLobby();
@@ -2125,7 +2213,10 @@ function startOrResume() {
   }
 }
 
-overlay.addEventListener('click', startOrResume);
+/* 只有这颗"开始/继续/再来一局"按钮会触发开局。
+ * 以前是整块 #overlay 绑点击，结果在开始界面（选模式那一屏）随便点个空白
+ * 就会被丢进倒计时开局，倒计时途中再点一下还会把 3 秒重新数一遍。 */
+overlayBtn.addEventListener('click', startOrResume);
 
 const modeCards = document.querySelectorAll('.mode-card');
 modeCards.forEach(function (card) {
@@ -2165,7 +2256,7 @@ document.addEventListener('pointerlockchange', function () {
   locked = document.pointerLockElement === renderer.domElement;
   if (!locked) firing = false;
   if (!locked && running && !gameOver) {
-    showOverlay('已暂停', '点击任意位置继续战斗', '继 续', true);
+    showOverlay('已暂停', '点击下面的【继 续】回到战斗', '继 续', true);
   }
 });
 document.addEventListener('pointerlockerror', function () {
@@ -2218,7 +2309,8 @@ function animate(now) {
           type: 'snap',
           host: {
             x: camera.position.x, y: camera.position.y, z: camera.position.z,
-            yaw: camera.rotation.y, alive: !gameOver && health > 0, hp: health
+            yaw: camera.rotation.y, alive: !gameOver && health > 0, hp: health,
+            weapon: weaponKey
           },
           guest: { hp: guestSim.hp, alive: guestSim.alive },
           wins: { host: duelWins.host, guest: duelWins.guest },
@@ -2235,13 +2327,15 @@ function animate(now) {
       netTimer -= dt;
       if (netTimer <= 0) {
         netTimer = 0.05;
-        netSend({ type: 'me', x: camera.position.x, z: camera.position.z, yaw: camera.rotation.y, weapon: weaponKey });
+        netSend({ type: 'me', x: camera.position.x, y: camera.position.y, z: camera.position.z, yaw: camera.rotation.y, weapon: weaponKey });
       }
     }
   }
 
   if (guestEntity) {
-    guestEntity.position.set(guestSim.x, 0, guestSim.z);
+    /* guestSim.y 是对方的眼高；模型原点在脚底，所以减去眼高才是脚该在的高度。
+     * （之前这里写死 0、同步帧里又直接把眼高当脚用，两边看到的高度就对不上了） */
+    guestEntity.position.set(guestSim.x, guestSim.y - player.eye, guestSim.z);
     guestEntity.rotation.y = guestSim.yaw;
     guestEntity.visible = guestSim.alive && net && net.connected;
   }
@@ -2268,7 +2362,7 @@ window.__fps = {
     return {
       gameMode: gameMode, isDuel: isDuel(),
       running: running, locked: locked, gameOver: gameOver,
-      health: health, opHealth: opHealth, score: score, kills: kills,
+      health: health, opHealth: opHealth, score: score, kills: kills, lastDamage: lastDamage,
       wins: { host: duelWins.host, guest: duelWins.guest },
       role: net && net.role, roomId: net && net.roomId,
       hostName: net && net.hostName, guestName: net && net.guestName,
@@ -2278,6 +2372,8 @@ window.__fps = {
       guestSim: { x: guestSim.x, z: guestSim.z, hp: guestSim.hp, alive: guestSim.alive },
       hostSim: { x: hostSim.x, z: hostSim.z, alive: hostSim.alive },
       duelBarOn: duelBar.classList.contains('on'),
+      countdownActive: countdownActive,
+      countdownNum: countdownNum.textContent,
       spawns: { host: { x: duelSpawns.host.x, z: duelSpawns.host.z, yaw: duelSpawns.host.yaw },
                 guest: { x: duelSpawns.guest.x, z: duelSpawns.guest.z, yaw: duelSpawns.guest.yaw } },
       spawnCandidateCount: DUEL_SPAWN_RINGS.reduce(function (n, r) { return n + r.length; }, 0),
@@ -2292,6 +2388,40 @@ window.__fps = {
     camera.rotation.y = Math.atan2(-(x - camera.position.x), -(z - camera.position.z));
     camera.rotation.x = 0;
   },
+  /* 瞄准世界坐标里的某个点（含俯仰），用来验证"打看到的对方" */
+  aimAtPoint: function (x, y, z) {
+    const dx = x - camera.position.x, dy = y - camera.position.y, dz = z - camera.position.z;
+    camera.rotation.y = Math.atan2(-dx, -dz);
+    camera.rotation.x = Math.atan2(dy, Math.hypot(dx, dz));
+    camera.rotation.z = 0;
+  },
+  /* 对方模型的诊断信息：朝向/武器/高度/受击件数量 */
+  oppInfo: function () {
+    const ent = (net && net.role === 'host') ? guestEntity : hostEntity;
+    if (!ent) return null;
+    let meshes = 0, hitParts = 0, emissive = 0, legs = 0;
+    ent.traverse(function (o) {
+      if (!o.isMesh) return;
+      meshes++;
+      if (o.userData.isPlayerPart) hitParts++;
+      if (o.material && o.material.emissiveIntensity > 1) emissive++;   // 眼睛
+      if (o.geometry && o.geometry.type === 'CylinderGeometry') legs++; // 胳膊/腿
+    });
+    return {
+      visible: ent.visible,
+      y: ent.position.y,
+      yaw: ent.rotation.y,
+      gunKey: ent.userData.gunKey,
+      gunChildren: ent.userData.gunSlot ? ent.userData.gunSlot.children.length : -1,
+      meshes: meshes,
+      hitParts: hitParts,
+      eyeMeshes: emissive,
+      limbs: legs,
+      torsoWorldY: ent.position.y + 1.24,
+      headWorldY: ent.position.y + 1.95
+    };
+  },
+  jump: function () { player.velY = 7.2; player.onGround = false; },
   teleport: function (x, z) { camera.position.x = x; camera.position.z = z; },
   sampleSpawns: function (n) {
     const out = [];
