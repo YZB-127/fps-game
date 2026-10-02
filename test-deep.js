@@ -79,8 +79,17 @@ function wsConnect(port) {
     function next(timeoutMs) {
       if (inbox.length) return Promise.resolve(inbox.shift());
       return new Promise(function (res, rej) {
-        const t = setTimeout(() => rej(new Error('等待消息超时')), timeoutMs || 3000);
-        waiters.push(m => { clearTimeout(t); res(m); });
+        let done = false;
+        const entry = m => { if (done) return; done = true; clearTimeout(t); res(m); };
+        /* 超时必须把自己从等待队列里摘掉，否则这条僵尸 waiter 会把下一条到达的消息吃掉 */
+        const t = setTimeout(() => {
+          if (done) return;
+          done = true;
+          const k = waiters.indexOf(entry);
+          if (k >= 0) waiters.splice(k, 1);
+          rej(new Error('等待消息超时'));
+        }, timeoutMs || 3000);
+        waiters.push(entry);
       });
     }
 

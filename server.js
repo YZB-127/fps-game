@@ -80,6 +80,7 @@ server.on('upgrade', function (req, socket) {
 function attachClient(socket) {
   const client = {
     socket: socket,
+    id: 0,              // 登录时分配，房间内唯一；对局消息靠它认人
     name: '',
     roomId: null,
     loggedIn: false,
@@ -199,7 +200,11 @@ function send(client, obj) { sendFrame(client, 0x1, JSON.stringify(obj)); }
 
 /* ============================ 房间 & 大厅状态 ============================ */
 const clients = new Set();
-const rooms = new Map(); // id -> { id, host, guest, maxPlayers, state, createdAt }
+const rooms = new Map(); // id -> { id, members:[client...], maxPlayers, state, createdAt }
+let nextClientId = 0;
+const MAX_PLAYERS = 4;   // 每间房的人数上限（含房主）
+
+function isHostOf(room, client) { return !!room && room.members[0] === client; }
 
 function makeRoomId() {
   for (let i = 0; i < 500; i++) {
@@ -210,14 +215,23 @@ function makeRoomId() {
 }
 
 function roomPublic(room) {
+  const host = room.members[0] || null;
   return {
     id: room.id,
-    hostName: room.host ? room.host.name : '房主',
-    guestName: room.guest ? room.guest.name : null,
-    players: (room.host ? 1 : 0) + (room.guest ? 1 : 0),
+    hostName: host ? host.name : '房主',
+    hostId: host ? host.id : 0,
+    players: room.members.length,
     maxPlayers: room.maxPlayers,
-    state: room.state
+    state: room.state,
+    members: room.members.map(function (m) { return { id: m.id, name: m.name }; })
   };
+}
+
+function roomBroadcast(room, obj, exceptClient) {
+  for (let i = 0; i < room.members.length; i++) {
+    if (room.members[i] === exceptClient) continue;
+    send(room.members[i], obj);
+  }
 }
 
 function broadcastLobby() {
@@ -228,8 +242,6 @@ function broadcastLobby() {
   list.sort(function (a, b) { return Number(a.id) - Number(b.id); });
   clients.forEach(function (c) { if (c.loggedIn) send(c, { type: 'lobbyState', rooms: list }); });
 }
-
-function peerOf(room, who) { return who === room.host ? room.guest : room.host; }
 
 function sendRoomState(room, state) {
   room.state = state;
@@ -249,22 +261,24 @@ function leaveRoom(client, reason) {
   const room = rooms.get(client.roomId);
   client.roomId = null;
   if (!room) return;
+  const idx = room.members.indexOf(client);
+  if (idx < 0) return;
+  room.members.splice(idx, 1);
 
-  if (room.host === client) {
-    // 房主走了 => 房间解散
-    if (room.guest) {
-      room.guest.roomId = null;
-      send(room.guest, { type: 'roomClosed' });
-      send(room.guest, { type: 'error', message: reason || '房主已离开，房间已解散' });
-    }
+  if (idx === 0) {
+    // 房主走了 => 房间解散（房间里的对局状态只有房主有，没法交接）
     room.state = 'closed';
     rooms.delete(room.id);
+    room.members.forEach(function (m) {
+      m.roomId = null;
+      send(m, { type: 'roomClosed' });
+      send(m, { type: 'error', message: reason || '房主已离开，房间已解散' });
+    });
     log('房间 ' + room.id + ' 解散（房主 ' + (client.name || '?') + ' 离开）');
-  } else if (room.guest === client) {
-    room.guest = null;
-    if (room.host) send(room.host, { type: 'peerLeft' });
+  } else {
     if (room.state === 'playing') room.state = 'waiting';
-    log('房间 ' + room.id + ' 加入者离开（' + (client.name || '?') + '）');
+    roomBroadcast(room, { type: 'peerLeft', id: client.id, name: client.name, room: roomPublic(room) });
+    log('房间 ' + room.id + ' 玩家离开（' + (client.name || '?') + '，剩 ' + room.members.length + ' 人）');
   }
   broadcastLobby();
 }
@@ -282,9 +296,10 @@ function handleMessage(client, msg) {
   switch (msg.type) {
     /* --- 登录：客户端连上后第一件事 --- */
     case 'login': {
+      if (!client.id) client.id = ++nextClientId;
       client.name = cleanName(msg.name);
       client.loggedIn = true;
-      send(client, { type: 'loginOk', name: client.name });
+      send(client, { type: 'loginOk', name: client.name, id: client.id });
       broadcastLobby();
       return;
     }
@@ -301,9 +316,8 @@ function handleMessage(client, msg) {
       if (client.roomId) leaveRoom(client, '你已离开上一个房间');
       const room = {
         id: makeRoomId(),
-        host: client,
-        guest: null,
-        maxPlayers: 2,          // 界面写死「每间 2 人」
+        members: [client],      // members[0] 恒为房主
+        maxPlayers: MAX_PLAYERS,
         state: 'waiting',
         createdAt: Date.now()
       };
@@ -321,17 +335,17 @@ function handleMessage(client, msg) {
       const room = rooms.get(id);
       if (!client.loggedIn) { send(client, { type: 'error', message: '请先登录' }); return; }
       if (!room) { send(client, { type: 'roomFull', reason: '房间 ' + id + ' 不存在或已解散' }); broadcastLobby(); return; }
-      if (room.host === client || room.guest === client) { client.roomId = room.id; send(client, { type: 'roomJoined', room: roomPublic(room) }); return; }
-      if (room.guest) { send(client, { type: 'roomFull', reason: '房间已满（每间 2 人）' }); broadcastLobby(); return; }
+      if (room.members.indexOf(client) >= 0) { client.roomId = room.id; send(client, { type: 'roomJoined', room: roomPublic(room) }); return; }
+      if (room.members.length >= room.maxPlayers) { send(client, { type: 'roomFull', reason: '房间已满（每间最多 ' + room.maxPlayers + ' 人）' }); broadcastLobby(); return; }
       if (room.state !== 'waiting') { send(client, { type: 'roomFull', reason: '该房间已开局' }); broadcastLobby(); return; }
 
       if (client.roomId) leaveRoom(client, '你已离开上一个房间');
-      room.guest = client;
+      room.members.push(client);
       client.roomId = room.id;
       send(client, { type: 'roomJoined', room: roomPublic(room) });
-      send(room.host, { type: 'peerJoined', playerName: client.name });
+      roomBroadcast(room, { type: 'peerJoined', id: client.id, name: client.name, room: roomPublic(room) }, client);
       broadcastLobby();
-      log('房间 ' + room.id + ' 加入者进入（' + client.name + '）');
+      log('房间 ' + room.id + ' 玩家进入（' + client.name + '，共 ' + room.members.length + ' 人）');
       return;
     }
 
@@ -344,17 +358,25 @@ function handleMessage(client, msg) {
     /* --- 房主切换房间状态 waiting / playing --- */
     case 'roomState': {
       const room = rooms.get(client.roomId);
-      if (!room || room.host !== client) return;
+      if (!isHostOf(room, client)) return;
       sendRoomState(room, msg.state === 'playing' ? 'playing' : 'waiting');
       return;
     }
 
-    /* --- 对局消息：原样转发给房间里另一个人（房主权威：敌人由房主模拟） --- */
+    /* --- 对局消息转发（房主权威）---
+     * 房主发的 -> 广播给房间里其他所有人（快照、伤害、复活、开局、结算）
+     * 其他人发的 -> 只发给房主（位置上报、开火、请求重开）
+     * 带上 from / id，房主才知道这条消息是谁的。 */
     case 'roomMsg': {
       const room = rooms.get(client.roomId);
-      if (!room) return;
-      const peer = peerOf(room, client);
-      if (peer) send(peer, { type: 'roomMsg', data: msg.data });
+      if (!room || room.members.indexOf(client) < 0) return;
+      const host = room.members[0];
+      const fromHost = (client === host);
+      for (let i = 0; i < room.members.length; i++) {
+        const m = room.members[i];
+        if (m === client) continue;
+        if (fromHost || m === host) send(m, { type: 'roomMsg', from: client.id, data: msg.data });
+      }
       return;
     }
 
@@ -413,8 +435,8 @@ server.listen(PORT, HOST, function () {
   }
   console.log('  WebSocket 中继：ws://<上面的地址>:' + PORT + '（页面会自动连，不用手填）');
   console.log('  ------------------------------------------------');
-  console.log('  玩法：双方都打开上面地址 → 模式选「多人模式」→ 一人创建房间拿到 4 位房间号');
-  console.log('        → 对方在大厅点【加入】或输入房间号 → 房主点【开始游戏】');
+  console.log('  玩法：所有人打开上面地址 → 模式选「联机混战」→ 一人创建房间拿到 4 位房间号');
+  console.log('        → 其他人在大厅点【加入】或输入房间号（每间最多 ' + MAX_PLAYERS + ' 人）→ 房主点【开始游戏】');
   console.log('  按 Ctrl+C 关闭服务器（关掉后大家都联不上了）');
   console.log('');
 });

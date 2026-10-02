@@ -43,18 +43,18 @@
   #minimap{position:absolute;right:26px;top:122px;width:180px;height:180px;border:2px solid rgba(255,255,255,.4);border-radius:10px;overflow:hidden;background:rgba(10,14,20,.55);box-shadow:0 4px 16px rgba(0,0,0,.45)}
   #minimap canvas{display:block;width:100%;height:100%}
 
-  /* 单挑：顶部双方血条 + 回合比分 */
-  #duelBar{position:absolute;top:14px;left:50%;transform:translateX(-50%);display:none;align-items:center;gap:16px;pointer-events:none}
+  /* 联机混战：左上角计分板 + 阵亡复活提示 */
+  #duelBar{position:absolute;top:14px;left:16px;display:none;flex-direction:column;gap:6px;align-items:flex-start;pointer-events:none;width:196px}
   #duelBar.on{display:flex}
-  .db-side{display:flex;align-items:center;gap:8px}
-  .db-name{font-size:13px;font-weight:700;color:#e8ecf2;text-shadow:0 1px 3px #000;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .db-track{width:168px;height:14px;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.28);border-radius:7px;overflow:hidden;display:flex}
-  .db-side.db-op .db-track{justify-content:flex-end}
-  .db-fill{height:100%;width:100%;background:linear-gradient(90deg,#4ade80,#a3e635);transition:width .15s}
-  .db-side.db-op .db-fill{background:linear-gradient(270deg,#f87171,#fb923c)}
-  .db-hp{font-size:13px;font-weight:800;color:#fff;min-width:32px;text-align:center;text-shadow:0 1px 3px #000;font-variant-numeric:tabular-nums}
-  .db-score{font-size:26px;font-weight:900;color:#ffd166;letter-spacing:2px;text-shadow:0 0 10px rgba(255,180,40,.5);font-variant-numeric:tabular-nums}
-  .db-score i{font-style:normal;opacity:.5;margin:0 5px}
+  .sb-head{font-size:12px;color:#9fb0c3;letter-spacing:1px;text-shadow:0 1px 3px #000}
+  .sb-head b{color:#ffd166;font-size:14px}
+  #sbRows{display:flex;flex-direction:column;gap:3px;width:100%}
+  .sb-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:3px 10px;border-radius:6px;background:rgba(10,14,20,.6);border:1px solid rgba(255,255,255,.12);font-size:13px;color:#dbe4ee}
+  .sb-row.me{border-color:#ffd166;background:rgba(255,209,102,.14);color:#fff;font-weight:800}
+  .sb-row.dead{opacity:.4}
+  .sb-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+  .sb-kills{font-weight:900;color:#ffd166;font-variant-numeric:tabular-nums;flex-shrink:0}
+  #respawnTip{position:absolute;left:50%;top:46%;transform:translateX(-50%);display:none;font-size:20px;font-weight:800;color:#ff9a9a;text-shadow:0 2px 10px rgba(0,0,0,.9);letter-spacing:2px;pointer-events:none}
 
   #damageVignette{position:fixed;inset:0;background:radial-gradient(ellipse at center,transparent 35%,rgba(220,20,20,.65) 100%);opacity:0;transition:opacity .6s;z-index:5;pointer-events:none}
   #scorePopup{position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);font-size:34px;font-weight:900;color:#ffd166;opacity:0;text-shadow:0 0 12px rgba(255,180,40,.9);transition:all .5s}
@@ -157,18 +157,10 @@
   </div>
   <div id="minimap"><canvas id="mmCanvas" width="180" height="180"></canvas></div>
   <div id="duelBar">
-    <div class="db-side db-me">
-      <span class="db-name" id="dbMyName">你</span>
-      <div class="db-track"><div class="db-fill" id="dbMyHp"></div></div>
-      <span class="db-hp" id="dbMyHpNum">100</span>
-    </div>
-    <div class="db-score"><span id="dbMyWins">0</span><i>:</i><span id="dbOpWins">0</span></div>
-    <div class="db-side db-op">
-      <span class="db-hp" id="dbOpHpNum">100</span>
-      <div class="db-track"><div class="db-fill" id="dbOpHp"></div></div>
-      <span class="db-name" id="dbOpName">对方</span>
-    </div>
+    <div class="sb-head">击杀 <b id="sbTarget">15</b> 获胜 · 我 <b id="sbMine">0</b></div>
+    <div id="sbRows"></div>
   </div>
+  <div id="respawnTip"></div>
 </div>
 <div id="damageVignette"></div>
 
@@ -180,8 +172,8 @@
       <div class="mode-desc">本地单机游玩</div>
     </div>
     <div class="mode-card" data-mode="multi">
-      <div class="mode-name">双人单挑</div>
-      <div class="mode-desc">联机大厅 · 1v1 对决</div>
+      <div class="mode-name">联机混战</div>
+      <div class="mode-desc">联机大厅 · 2~4 人死斗</div>
     </div>
   </div>
   <div id="overlayDesc">
@@ -247,7 +239,7 @@
   </div>
   <button id="overlayBtn">点击开始</button>
   <button id="overlayLobbyBtn">返回大厅</button>
-  <div id="hint">双人单挑：先在本目录运行 node server.js，双方浏览器打开 http://房主IP:8000 进大厅，一人建房、一人加入 → 房主点开始</div>
+  <div id="hint">2~4 人混战：先在本目录运行 node server.js，所有人浏览器打开 http://房主IP:8000 进大厅，一人建房、其他人加入 → 房主点开始</div>
 </div>
 
 <div id="modeNotice"></div>
@@ -378,21 +370,16 @@ function collideCircle(x, z, r) {
 /* ================= 玩家 ================= */
 const player = { radius: 0.6, eye: 1.7, velY: 0, onGround: true };
 
-/* 模式：solo = 单人打机器人；multi = 联机双人单挑（1v1） */
+/* 模式：solo = 单人打机器人；multi = 联机混战（2~4 人复活死斗） */
 let gameMode = 'solo';
-function isDuel() { return gameMode === 'multi'; }
+function isDuel() { return gameMode === 'multi'; }   // 函数名保留，语义 = 联机对局
 
-/* 单挑状态：duelWins 由房主权威维护；opHealth = 对方血量（HUD 用）；hostSim = 加入者看到的房主 */
-const duelWins = { host: 0, guest: 0 };
-let opHealth = 100;
-const hostSim = { x: 0, z: 0, alive: false };
-
-/* 单挑出生点：每回合随机抽一对。
+/* 出生点：每局随机抽 N 个。
  * 随机的讲究：
- *   1) 候选点按"环"生成（同一环上到场地中心的距离完全相同），先按环挑 => 双方位置天然公平；
+ *   1) 候选点按"环"生成（同一环上到场地中心的距离完全相同）=> 抽到同一环的位置天然公平；
  *   2) 生成候选点时就把落在箱子/内墙里、或贴边的点剔掉 => 抽出来一定站得住；
- *   3) 两点之间要求足够的间距 => 不会一开局就贴脸互秒，也不会远到互相找不到。
- * 由房主抽签，抽完发给加入者，保证两边用的是同一组出生点。 */
+ *   3) N 个点之间要求尽量互相远离 => 不会一开局就贴脸互秒，也不会挤成一团。
+ * 由房主抽签，抽完发给所有人，保证大家用的是同一组出生点。 */
 function spawnClear(x, z) {
   const M = player.radius + 0.7;              // 留点余地，别贴着墙或箱子站
   if (Math.abs(x) > ARENA - 3 || Math.abs(z) > ARENA - 3) return false;
@@ -425,36 +412,83 @@ function yawTo(fromX, fromZ, toX, toZ) {
   return Math.atan2(-(toX - fromX), -(toZ - fromZ));
 }
 
-function duelPair(a, b) {
-  return {
-    host: { x: a.x, z: a.z, yaw: yawTo(a.x, a.z, b.x, b.z) },
-    guest: { x: b.x, z: b.z, yaw: yawTo(b.x, b.z, a.x, a.z) }
-  };
-}
-
-function pickDuelSpawns() {
+const ALL_SPAWN_POINTS = (function () {
   const all = [];
   for (let i = 0; i < DUEL_SPAWN_RINGS.length; i++) {
     for (let j = 0; j < DUEL_SPAWN_RINGS[i].length; j++) all.push(DUEL_SPAWN_RINGS[i][j]);
   }
-  if (all.length < 2) return duelPair({ x: -3, z: 26 }, { x: -3, z: -26 });   // 理论到不了这
+  return all;
+})();
 
-  let fallback = null;
-  for (let t = 0; t < 400; t++) {
-    const a = all[(Math.random() * all.length) | 0];
-    const b = all[(Math.random() * all.length) | 0];
-    if (a === b) continue;
-    const d = Math.hypot(a.x - b.x, a.z - b.z);
-    if (d < 26 || d > 52) continue;                       // 不贴脸、也不太远
-    if (Math.abs(a.r - b.r) < 0.5) return duelPair(a, b);  // 同一环 = 最公平，直接采用
-    if (Math.abs(a.r - b.r) <= 6.5 && !fallback) fallback = [a, b];  // 相邻环也能接受
+function minPairDist(pts, skipIdx) {
+  let m = Infinity;
+  for (let i = 0; i < pts.length; i++) {
+    if (i === skipIdx) continue;
+    for (let j = i + 1; j < pts.length; j++) {
+      if (j === skipIdx) continue;
+      m = Math.min(m, Math.hypot(pts[i].x - pts[j].x, pts[i].z - pts[j].z));
+    }
   }
-  if (fallback) return duelPair(fallback[0], fallback[1]);
-  return duelPair({ x: -3, z: 26 }, { x: -3, z: -26 });
+  return m;
 }
 
-/* 本回合实际使用的出生点（房主抽签后同步给加入者） */
-let duelSpawns = duelPair({ x: -3, z: 26 }, { x: -3, z: -26 });
+/* 抽 n 个互相尽量分散的出生点：随机起点 + 每次挑"离已选点最远"的那个，
+ * 重复若干轮取"最小两两间距"最大的一组。 */
+function pickSpawnPoints(n) {
+  const all = ALL_SPAWN_POINTS;
+  if (all.length <= n) return all.slice();
+  let best = null, bestScore = -1;
+  for (let trial = 0; trial < 240; trial++) {
+    const pool = all.slice();
+    const pick = [pool.splice((Math.random() * pool.length) | 0, 1)[0]];
+    while (pick.length < n && pool.length) {
+      let bi = 0, bd = -1;
+      for (let i = 0; i < pool.length; i++) {
+        let dmin = Infinity;
+        for (let k = 0; k < pick.length; k++) dmin = Math.min(dmin, Math.hypot(pool[i].x - pick[k].x, pool[i].z - pick[k].z));
+        if (dmin > bd) { bd = dmin; bi = i; }
+      }
+      pick.push(pool.splice(bi, 1)[0]);
+    }
+    const score = minPairDist(pick);
+    if (score > bestScore) { bestScore = score; best = pick; }
+  }
+  return best || all.slice(0, n);
+}
+
+/* 给一组玩家 id 分配出生点，朝向其余出生点的中心（一出生就面向战场） */
+function makeSpawnAssignment(ids) {
+  const pts = pickSpawnPoints(ids.length);
+  const out = {};
+  for (let i = 0; i < ids.length; i++) {
+    const p = pts[i];
+    let cx = 0, cz = 0;
+    if (pts.length > 1) {
+      for (let j = 0; j < pts.length; j++) { if (j !== i) { cx += pts[j].x; cz += pts[j].z; } }
+      cx /= (pts.length - 1); cz /= (pts.length - 1);
+    }
+    out[ids[i]] = { x: p.x, z: p.z, yaw: yawTo(p.x, p.z, cx, cz) };
+  }
+  return out;
+}
+
+/* 复活点：在所有候选点里挑一个"离活着的其他人最远"的，免得刚复活就被人堵脸 */
+function pickRespawnPoint(forId) {
+  const all = ALL_SPAWN_POINTS;
+  let best = all[0], bestD = -1;
+  for (let t = 0; t < 80; t++) {
+    const c = all[(Math.random() * all.length) | 0];
+    let dmin = Infinity;
+    players.forEach(function (p) {
+      if (p.id === forId || !p.alive) return;
+      dmin = Math.min(dmin, Math.hypot(c.x - p.x, c.z - p.z));
+    });
+    if (dmin === Infinity) dmin = 999;
+    if (dmin > bestD) { bestD = dmin; best = c; }
+    if (bestD > 34) break;
+  }
+  return { x: best.x, z: best.z, yaw: yawTo(best.x, best.z, 0, 0) };   // 面朝场地中心
+}
 
 const keys = {};
 const MOVE_KEYS = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space', 'ShiftLeft', 'ShiftRight', 'KeyR', 'Digit1', 'Digit2', 'Digit3'];
@@ -462,13 +496,13 @@ const MOVE_KEYS = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space', 'ShiftLeft', 'ShiftR
 window.addEventListener('keydown', function (e) {
   if (MOVE_KEYS.indexOf(e.code) !== -1) e.preventDefault();
   keys[e.code] = true;
-  if (e.code === 'Space' && running && locked && !gameOver && player.onGround) {
+  if (e.code === 'Space' && running && locked && !gameOver && meAlive && player.onGround) {
     player.velY = 7.2;
     player.onGround = false;
   }
-  if (e.code === 'KeyR' && running && !gameOver) startReload();
+  if (e.code === 'KeyR' && running && !gameOver && meAlive) startReload();
   const wk = WEAPON_KEYS[e.code];
-  if (wk && running && locked && !gameOver) switchWeapon(wk);
+  if (wk && running && locked && !gameOver && meAlive) switchWeapon(wk);
 });
 window.addEventListener('keyup', function (e) { keys[e.code] = false; });
 document.addEventListener('contextmenu', function (e) { e.preventDefault(); });
@@ -484,10 +518,12 @@ function updatePlayer(dt) {
   const right = new THREE.Vector3().crossVectors(fwd, UP).normalize();
 
   let mx = 0, mz = 0;
-  if (keys.KeyW) { mx += fwd.x; mz += fwd.z; }
-  if (keys.KeyS) { mx -= fwd.x; mz -= fwd.z; }
-  if (keys.KeyD) { mx += right.x; mz += right.z; }
-  if (keys.KeyA) { mx -= right.x; mz -= right.z; }
+  if (meAlive) {
+    if (keys.KeyW) { mx += fwd.x; mz += fwd.z; }
+    if (keys.KeyS) { mx -= fwd.x; mz -= fwd.z; }
+    if (keys.KeyD) { mx += right.x; mz += right.z; }
+    if (keys.KeyA) { mx -= right.x; mz -= right.z; }
+  }
   const len = Math.hypot(mx, mz);
   if (len > 0) { mx /= len; mz /= len; }
 
@@ -838,61 +874,28 @@ function updateEnemies(dt, t) {
       e.body.rotation.x *= 0.85;
     }
   }
-
-  /* 多人：房主权威——敌人攻击加入者 */
-  if (net && net.role === 'host' && guestSim.alive && running && !gameOver) {
-    guestAtkCd -= dt;
-    for (let i = 0; i < enemies.length; i++) {
-      const e = enemies[i];
-      if (!e.alive || e.spawnT < 1) continue;
-      const gdx = guestSim.x - e.group.position.x;
-      const gdz = guestSim.z - e.group.position.z;
-      const gd = Math.hypot(gdx, gdz);
-      if (gd < 2.8 && guestAtkCd <= 0 && hasLOS(e, new THREE.Vector3(guestSim.x, 1.7, guestSim.z))) {
-        guestAtkCd = 1.15;
-        guestSim.hp -= 10;
-        netSend({ type: 'hurt', amount: 10 });
-        if (guestSim.hp <= 0) {
-          guestSim.alive = false;
-          netSend({ type: 'gameover', winner: 'host' });
-          if (!gameOver) {
-            gameOver = true;
-            running = false;
-            try { document.exitPointerLock(); } catch (err) {}
-            showOverlay('游戏结束', '你赢了！对方已被击败', '再来一局', true);
-          }
-        }
-      }
-    }
-  }
 }
 
-function hitEnemy(e, dmg, headshot, forGuest) {
+function hitEnemy(e, dmg, headshot) {
   if (!e.alive) return;
   e.hp -= dmg;
   e.flash = 0.15;
   setEnemyFlash(e, true);
-  if (!forGuest) showHitMarker();
-  if (e.hp <= 0) killEnemy(e, headshot, forGuest);
+  showHitMarker();
+  if (e.hp <= 0) killEnemy(e, headshot);
 }
 
-function killEnemy(e, headshot, forGuest) {
+function killEnemy(e, headshot) {
   if (!e.alive) return;
   e.alive = false;
   e.dying = 0.3;
   e.state = 'dead';
   const pts = headshot ? 150 : 100;
-  if (forGuest) {
-    guestSim.score += pts;
-    guestSim.kills += 1;
-    netSend({ type: 'kill', headshot: !!headshot });
-  } else {
-    score += pts;
-    kills += 1;
-    playKill();
-    popScore(pts);
-    updateHud();
-  }
+  score += pts;
+  kills += 1;
+  playKill();
+  popScore(pts);
+  updateHud();
 }
 
 /* ================= 射击 ================= */
@@ -922,12 +925,12 @@ function getAimDir(spread) {
 }
 
 function traceShot(dir, w) {
-  const parts = [];
+  let parts = [];
   if (isDuel()) {
-    /* 单挑：本地只负责打自己"看得见的对方模型"拿弹道终点；
-     * 命中反馈分方向——房主本地就结算，加入者等房主回 hit（避免打空气也弹命中标记）。 */
-    const ent = (net && net.role === 'host') ? guestEntity : hostEntity;
-    if (ent && ent.visible) ent.traverse(function (o) { if (o.isMesh && o.userData.isPlayerPart) parts.push(o); });
+    /* 联机：本地弹道只打"我看到的那些对手模型"，用来拿曳光弹终点。
+     * 伤害分两种走法——房主本地直接裁决；其他人只上报，等房主回 hit 才弹命中标记
+     *（不然打空气也会有命中反馈）。 */
+    parts = opponentHitParts();
   } else {
     for (let i = 0; i < enemies.length; i++) {
       const e = enemies[i];
@@ -948,37 +951,24 @@ function traceShot(dir, w) {
     const e = enemies[h.object.userData.enemyId];
     if (e && e.alive) {
       const headshot = h.object.userData.head === true;
-      if (net && net.role === 'guest') {
+      if (isDuel()) {
         showHitMarker();
       } else {
-        hitEnemy(e, headshot ? w.damage * 1.5 : w.damage, headshot, false);
+        hitEnemy(e, headshot ? w.damage * 1.5 : w.damage, headshot);
       }
     }
-  } else if (h.object.userData.isPlayerPart) {
-    if (net && net.role === 'host' && guestSim.alive) {
+  } else if (h.object.userData.isPlayerPart && amHost()) {
+    /* 房主自己开的枪：本地就裁决（打的是"它看到的那个模型"）。 */
+    const vid = resolveHitPlayer(h.object);
+    if (vid && vid !== myId && running && !gameOver) {
       const headshot = h.object.userData.head === true;
-      hitGuestPlayer(headshot ? w.damage * 1.5 : w.damage, headshot);
+      hostDamage(vid, headshot ? w.damage * 1.5 : w.damage, headshot, myId);
     }
   }
   return h.point;
 }
 
-/* 房主命中加入者 —— 单挑伤害由房主单方面结算，再同步血量过去 */
-function hitGuestPlayer(dmg, headshot) {
-  if (!net || net.role !== 'host' || !guestSim.alive || gameOver) return;
-  guestSim.hp = Math.max(0, guestSim.hp - dmg);
-  showHitMarker();
-  playHit();
-  netSend({ type: 'hurt', hp: guestSim.hp, amount: dmg, headshot: !!headshot });
-  if (guestSim.hp <= 0) {
-    guestSim.alive = false;
-    duelWins.host += 1;
-    endGame('你赢了！<br>' + escName(net.guestName || '对方') + ' 已被击败', 'host');
-  }
-  updateHud();
-}
-
-/* 房主自己的受击盒（加入者的子弹打过来时用来判定命中） */
+/* 房主自己的受击盒（别人打过来时用来判定命中） */
 function hostHitParts() {
   const parts = [];
   hostHitbox.traverse(function (o) { if (o.isMesh) parts.push(o); });
@@ -986,7 +976,7 @@ function hostHitParts() {
 }
 
 function canShoot() {
-  return running && locked && !gameOver && !reloading && fireCd <= 0 && ammo > 0;
+  return running && locked && !gameOver && meAlive && !reloading && fireCd <= 0 && ammo > 0;
 }
 
 function shoot() {
@@ -1026,7 +1016,8 @@ function shoot() {
     muzzle.visible = false;
   }, 70);
 
-  if (net && net.role === 'guest') {
+  /* 联机里只有房主本地裁决，其他人把自己的枪口位置和方向报给房主去算 */
+  if (isDuel() && !amHost()) {
     const nf = new THREE.Vector3();
     camera.getWorldDirection(nf);
     netSend({
@@ -1068,16 +1059,12 @@ const weaponNameEl = document.getElementById('weaponName');
 const ammoCountEl = document.getElementById('ammoCount');
 const ammoMaxEl = document.getElementById('ammoMax');
 
-/* 单挑 HUD */
+/* 联机计分板 */
 const duelBar = document.getElementById('duelBar');
-const dbMyName = document.getElementById('dbMyName');
-const dbOpName = document.getElementById('dbOpName');
-const dbMyHp = document.getElementById('dbMyHp');
-const dbOpHp = document.getElementById('dbOpHp');
-const dbMyHpNum = document.getElementById('dbMyHpNum');
-const dbOpHpNum = document.getElementById('dbOpHpNum');
-const dbMyWins = document.getElementById('dbMyWins');
-const dbOpWins = document.getElementById('dbOpWins');
+const sbRows = document.getElementById('sbRows');
+const sbTarget = document.getElementById('sbTarget');
+const sbMine = document.getElementById('sbMine');
+const respawnTip = document.getElementById('respawnTip');
 const scoreWrapEl = document.getElementById('scoreWrap');
 const killsWrapEl = document.getElementById('killsWrap');
 
@@ -1116,19 +1103,17 @@ function drawMinimap() {
   const px = (camera.position.x + ARENA) * MM_SCALE;
   const py = (camera.position.z + ARENA) * MM_SCALE;
   if (isDuel()) {
-    /* 单挑：小地图上只标出对方 */
-    const o = (net && net.role === 'host')
-      ? { x: guestSim.x, z: guestSim.z, on: guestSim.alive }
-      : { x: hostSim.x, z: hostSim.z, on: hostSim.alive };
-    if (o.on) {
-      mmCtx.fillStyle = '#ff8a3c';
+    /* 联机：小地图上把还活着的其他人全标出来（房主用金色，其余橙色） */
+    players.forEach(function (p) {
+      if (p.id === myId || !p.alive) return;
+      mmCtx.fillStyle = p.isHost ? '#ffd166' : '#ff8a3c';
       mmCtx.beginPath();
-      mmCtx.arc((o.x + ARENA) * MM_SCALE, (o.z + ARENA) * MM_SCALE, 5, 0, Math.PI * 2);
+      mmCtx.arc((p.x + ARENA) * MM_SCALE, (p.z + ARENA) * MM_SCALE, 4.5, 0, Math.PI * 2);
       mmCtx.fill();
       mmCtx.strokeStyle = 'rgba(255,255,255,.85)';
       mmCtx.lineWidth = 1.2;
       mmCtx.stroke();
-    }
+    });
   } else {
     for (let i = 0; i < enemies.length; i++) {
       const e = enemies[i];
@@ -1174,25 +1159,37 @@ function updateHud() {
   updateDuelBar();
 }
 
-/* 单挑顶栏：左边自己、右边对方，中间回合比分（比分由房主权威下发） */
+/* 联机计分板：所有人按击杀排序，先到 killTarget 获胜；死了显示复活倒计时 */
 function updateDuelBar() {
-  const on = isDuel() && !!(net && net.roomId);
+  const on = isDuel() && inRoom();
   duelBar.classList.toggle('on', on);
   scoreWrapEl.style.display = on ? 'none' : '';
   killsWrapEl.style.display = on ? 'none' : '';
-  if (!on) return;
-  const iAmGuest = net.role === 'guest';
-  dbMyName.textContent = (iAmGuest ? net.guestName : net.hostName) || '你';
-  dbOpName.textContent = (iAmGuest ? net.hostName : net.guestName) || '对方';
-  /* 对方血量：房主直接读 guestSim，加入者用房主下发的值 */
-  const myHp = clamp(health, 0, 100);
-  const opHp = clamp(iAmGuest ? opHealth : guestSim.hp, 0, 100);
-  dbMyHp.style.width = myHp + '%';
-  dbOpHp.style.width = opHp + '%';
-  dbMyHpNum.textContent = Math.max(0, Math.ceil(myHp));
-  dbOpHpNum.textContent = Math.max(0, Math.ceil(opHp));
-  dbMyWins.textContent = iAmGuest ? duelWins.guest : duelWins.host;
-  dbOpWins.textContent = iAmGuest ? duelWins.host : duelWins.guest;
+
+  if (!on) { respawnTip.style.display = 'none'; return; }
+  if (!meAlive) {
+    const left = Math.max(0, Math.ceil(((myRespawnAt || 0) - Date.now()) / 1000));
+    respawnTip.textContent = '已被击倒 · ' + left + ' 秒后随机点复活';
+    respawnTip.style.display = 'block';
+  } else {
+    respawnTip.style.display = 'none';
+  }
+
+  if (sbTarget) sbTarget.textContent = killTarget;
+  if (sbMine) sbMine.textContent = myKills;
+  if (!sbRows) return;
+  const arr = Array.from(players.values()).sort(function (a, b) {
+    if (b.kills !== a.kills) return b.kills - a.kills;
+    return String(a.name).localeCompare(String(b.name));
+  });
+  let html = '';
+  arr.forEach(function (p) {
+    const me = (p.id === myId);
+    html += '<div class="sb-row' + (me ? ' me' : '') + (p.alive ? '' : ' dead') + '">' +
+      '<span class="sb-name">' + escName(p.name) + (me ? '（你）' : '') + '</span>' +
+      '<span class="sb-kills">' + p.kills + '</span></div>';
+  });
+  sbRows.innerHTML = html;
 }
 
 function showHitMarker() {
@@ -1216,6 +1213,7 @@ function flashDamage() {
   dmgT = setTimeout(function () { damageVignette.style.opacity = '0'; }, 130);
 }
 
+/* 单人模式：机器人打你。联机里血量一律走房主的 hostDamage，不走这里。 */
 function damagePlayer(amount) {
   if (gameOver || !running) return;
   lastDamage = amount;
@@ -1223,27 +1221,16 @@ function damagePlayer(amount) {
   flashDamage();
   playHurt();
   updateHud();
-  if (health <= 0) {
-    if (isDuel()) {
-      /* 单挑里只有房主会走到这（加入者血量由房主下发），房主一死即对方获胜 */
-      duelWins.guest += 1;
-      endGame('你被击败了<br>' + escName((net && net.guestName) || '对方') + ' 获胜', 'guest');
-    } else {
-      endGame();
-    }
-  }
+  if (health <= 0) endGame();
 }
 
-/* winner 只有单挑才传：本地判定完再把结果告诉对方 */
-function endGame(winText, winner) {
+/* 单人模式的结算 */
+function endGame(winText) {
   gameOver = true;
   running = false;
   firing = false;
   try { document.exitPointerLock(); } catch (err) {}
-  if (winner && net && net.connected && net.roomId) {
-    netSend({ type: 'gameover', winner: winner, wins: { host: duelWins.host, guest: duelWins.guest } });
-  }
-  showOverlay('游戏结束', winText || ('得分 ' + score + ' · 消灭 ' + kills + ' 个敌人<br><br>机器人重新占领了基地……'), '再来一局', !!(net && net.connected && net.roomId));
+  showOverlay('游戏结束', winText || ('得分 ' + score + ' · 消灭 ' + kills + ' 个敌人<br><br>机器人重新占领了基地……'), '再来一局', false);
   updateHud();
 }
 
@@ -1259,35 +1246,13 @@ function applyModeEntities() {
 
 function resetGame() {
   health = 100; score = 0; kills = 0; gameOver = false; running = true;
+  meAlive = true; myRespawnAt = 0; lastDamage = 0;
   firing = false; reloading = false; reloadT = 0; fireCd = 0; recoilT = 0; recoilPitch = 0; recoilYaw = 0;
   for (const k in gunModels) { gunModels[k].position.z = 0; gunModels[k].rotation.x = 0; }
   ammo = WEAPON_DEFS[weaponKey].mag;
   ammoByWeapon[weaponKey] = ammo;
-  if (net && net.role === 'host') {
-    guestSim.hp = 100;
-    guestSim.score = 0;
-    guestSim.kills = 0;
-    guestSim.alive = true;
-  }
   if (isDuel()) {
-    /* 单挑：用本回合抽到的随机出生点，双方相向而立；场上没有机器人 */
-    const iAmGuest = !!(net && net.role === 'guest');
-    const sp = iAmGuest ? duelSpawns.guest : duelSpawns.host;
-    camera.position.set(sp.x, player.eye, sp.z);
-    camera.rotation.set(0, sp.yaw, 0);
-    camera.rotation.order = 'YXZ';
-    player.velY = 0; player.onGround = true;
-    opHealth = 100;
-    hostSim.alive = false;
-    if (!iAmGuest) {
-      /* 房主顺手把对方的模拟位置摆到它的出生点，免得开打头几帧它还停在上回合的地方 */
-      guestSim.x = duelSpawns.guest.x;
-      guestSim.z = duelSpawns.guest.z;
-      guestSim.y = player.eye;
-      guestSim.yaw = duelSpawns.guest.yaw;
-    }
-    if (guestEntity) guestEntity.visible = false;
-    if (hostEntity) hostEntity.visible = false;
+    /* 联机：站哪由房主抽签、applyLocalSpawn 负责，这里只把本地状态清干净；场上没有机器人 */
     applyModeEntities();
     updateHud();
     return;
@@ -1386,11 +1351,17 @@ function playSwitch() { beep(600, 800, 0.06, 0.15, 'square'); }
  * 对局仍为房主权威：房主机器跑完整模拟（敌人AI、伤害、胜负结算），
  * 加入者只上传自身位置与开火，接收房主的同步帧。 */
 
-let net = null;   // { ws, connected, role:'host'|'guest'|null, roomId, hostName, guestName }
-let guestSim = { x: 0, z: 0, y: 1.7, yaw: 0, hp: 100, score: 0, kills: 0, weapon: 'pistol', alive: true };
-let guestEntity = null;
-let hostEntity = null;
-let guestAtkCd = 0;
+let net = null;   // { ws, connected, role:'host'|'client'|null, roomId, myId, room }
+let myId = 0;             // 服务器分配的玩家 id
+let myKills = 0;          // 我这一局的击杀数（房主权威下发）
+let meAlive = true;       // 我是否活着（死了等复活）
+let myRespawnAt = 0;
+let killTarget = 15;      // 先到这个击杀数获胜（房主开局时会把数值广播给所有人）
+const RESPAWN_MS = 2500;  // 死后多久复活
+/* 房间里所有人的状态（房主权威维护；非房主端由快照填充）。
+ * 自己也在表里，只是自己不需要可见模型（entity 为 null）。 */
+const players = new Map();
+const PEER_COLORS = [0x3c8ae0, 0xe08a3c, 0x8a3ce0, 0x3cbf8a, 0xd6458a, 0xd64545];
 let netTimer = 0;
 let returnToLobbyPending = false;
 let pendingJoin = null;
@@ -1480,14 +1451,110 @@ function makePlayerEntity(color) {
   g.userData.gunKey = null;
   setEntityWeapon(g, 'pistol');
 
+  /* 头顶名牌位（Sprite，自动面向相机），名字由 setEntityName 填。
+   * 放得比头顶高一点，牌子放大时也不会糊在脑袋上 */
+  const nameSlot = new THREE.Group();
+  nameSlot.position.set(0, 2.85, 0);
+  g.add(nameSlot);
+  g.userData.nameSlot = nameSlot;
+  g.userData.nameTag = null;
+
   /* 真正参与命中判定的只有这个（上面那些装饰都不是受击盒） */
   g.add(makeHitVolume('isPlayerPart'));
   return g;
 }
 
-function removePeerEntity() {
-  if (guestEntity) { scene.remove(guestEntity); guestEntity = null; }
-  if (hostEntity) { scene.remove(hostEntity); hostEntity = null; }
+/* 头顶名牌：把名字画到 canvas 再贴成 Sprite。
+ * Sprite 永远面向相机，不用担心玩家转身时牌子侧过去看不见。 */
+const TAG_BASE_H = 0.30;                    // 基准世界高度，实际按距离缩放
+function makeNameTag(text, accent) {
+  const fontSize = 44, padX = 24, padY = 13;
+  const font = 'bold ' + fontSize + 'px "Segoe UI","Microsoft YaHei",sans-serif';
+  const cv = document.createElement('canvas');
+  let ctx = cv.getContext('2d');
+  ctx.font = font;
+  const tw = Math.ceil(ctx.measureText(text).width);
+  cv.width = Math.max(40, tw + padX * 2);
+  cv.height = fontSize + padY * 2;
+  ctx = cv.getContext('2d');                // 改过尺寸要重新拿上下文
+  ctx.font = font;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const r = cv.height / 2;
+  ctx.beginPath();                          // 胶囊底
+  ctx.moveTo(r, 0);
+  ctx.lineTo(cv.width - r, 0);
+  ctx.arc(cv.width - r, r, r, -Math.PI / 2, Math.PI / 2);
+  ctx.lineTo(r, cv.height);
+  ctx.arc(r, r, r, Math.PI / 2, -Math.PI / 2);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(8,12,18,0.74)';
+  ctx.fill();
+  ctx.strokeStyle = accent || 'rgba(255,255,255,0.5)';
+  ctx.lineWidth = 4;
+  ctx.stroke();
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(text, cv.width / 2, cv.height / 2 + 1);
+
+  const tex = new THREE.CanvasTexture(cv);
+  tex.minFilter = THREE.LinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
+  const ratio = cv.width / cv.height;
+  sp.userData.baseW = TAG_BASE_H * ratio;
+  sp.userData.baseH = TAG_BASE_H;
+  sp.scale.set(TAG_BASE_H * ratio, TAG_BASE_H, 1);
+  return sp;
+}
+
+function colorCss(hex) { return '#' + ('000000' + (hex >>> 0).toString(16)).slice(-6); }
+
+/* 换名牌上的名字（名字没变就不重建，避免每帧重画 canvas） */
+function setEntityName(ent, name, accent) {
+  if (!ent || !ent.userData || !ent.userData.nameSlot) return;
+  const n = name || '玩家';
+  if (ent.userData.tagName === n && ent.userData.tagAccent === accent) return;
+  ent.userData.tagName = n;
+  ent.userData.tagAccent = accent;
+  const slot = ent.userData.nameSlot;
+  if (slot.clear) slot.clear();
+  else while (slot.children.length) slot.remove(slot.children[0]);
+  const tag = makeNameTag(n, accent);
+  ent.userData.nameTag = tag;
+  slot.add(tag);
+}
+
+/* 名牌按距离缩放 —— 让它在屏幕上保持基本恒定的大小（约 14px），远近都读得清。
+ * 推导：相机竖直 FOV 75°，距离 d 处一屏可见的世界高度 = 2·d·tan(37.5°) ≈ 1.534d，
+ * 要在 700px 高的屏幕上占 14px，世界高度就得是 0.031·d；除以基准高度 0.30 就是下面的系数。 */
+function updateNameTagScale(ent) {
+  const tag = ent.userData.nameTag;
+  if (!tag) return;
+  const d = camera.position.distanceTo(ent.position);
+  const s = clamp(d * 0.105, 0.35, 3.0);
+  tag.scale.set(tag.userData.baseW * s, tag.userData.baseH * s, 1);
+}
+
+/* ---------- 玩家实体（每个对手一个可见模型） ---------- */
+function ensurePeerEntity(p) {
+  if (p.id === myId) return null;          // 自己不需要模型
+  if (p.entity) return p.entity;
+  const e = makePlayerEntity(p.color);
+  e.visible = false;
+  /* 受击体积上打上 playerId，射线打中之后才知道打的是谁 */
+  e.traverse(function (o) { if (o.isMesh && o.userData.isPlayerPart) o.userData.playerId = p.id; });
+  setEntityName(e, p.name, colorCss(p.color));   // 头顶名牌
+  p.entity = e;
+  scene.add(e);
+  return e;
+}
+
+function removePeerEntity(p) {
+  if (p && p.entity) { scene.remove(p.entity); p.entity = null; }
+}
+
+function removeAllPeerEntities() {
+  players.forEach(function (p) { removePeerEntity(p); });
 }
 
 function sendServer(obj) {
@@ -1496,6 +1563,8 @@ function sendServer(obj) {
 function netSend(obj) {
   if (net && net.connected && net.roomId) sendServer({ type: 'roomMsg', data: obj });
 }
+function amHost() { return !!(net && net.role === 'host'); }
+function inRoom() { return !!(net && net.connected && net.roomId); }
 
 /* ---------- 大厅界面元素 ---------- */
 const lobbyPanel = document.getElementById('lobbyPanel');
@@ -1584,9 +1653,35 @@ function connectLobby() {
 }
 
 /* ---------- 服务器消息分发 ---------- */
+function syncPlayersFromRoom(room) {
+  if (!room) return;
+  const members = room.members || [];
+  const seen = {};
+  members.forEach(function (m) {
+    seen[m.id] = true;
+    let p = players.get(m.id);
+    if (!p) {
+      p = {
+        id: m.id, name: m.name, isHost: (m.id === room.hostId),
+        x: 0, y: player.eye, z: 0, yaw: 0, weapon: 'pistol',
+        hp: 100, kills: 0, alive: true, respawnAt: 0, entity: null,
+        color: PEER_COLORS[players.size % PEER_COLORS.length]
+      };
+      players.set(m.id, p);
+    } else {
+      if (p.name !== m.name) { p.name = m.name; setEntityName(p.entity, p.name, colorCss(p.color)); }
+      p.isHost = (m.id === room.hostId);
+    }
+  });
+  Array.from(players.keys()).forEach(function (id) {
+    if (!seen[id]) { removePeerEntity(players.get(id)); players.delete(id); }
+  });
+}
+
 function handleServerMsg(m) {
   if (m.type === 'loginOk') {
     myName = m.name;
+    if (m.id) myId = m.id;
     saveNickLocal(myName);
     lpNick.value = myName;
     if (pendingJoin) { const id = pendingJoin; pendingJoin = null; sendServer({ type: 'joinRoom', roomId: id }); }
@@ -1597,21 +1692,22 @@ function handleServerMsg(m) {
     renderLobbyRooms();
     return;
   }
-  if (m.type === 'roomCreated') { enterRoom('host', m.room); return; }
-  if (m.type === 'roomJoined') { enterRoom('guest', m.room); return; }
+  if (m.type === 'roomCreated') { enteredRoom('host', m.room); return; }
+  if (m.type === 'roomJoined') { enteredRoom('client', m.room); return; }
   if (m.type === 'peerJoined') {
-    if (net && net.role === 'host' && m.playerName) {
-      net.guestName = m.playerName;
-      showWaitRoom('host');
-      showModeNotice('玩家 ' + m.playerName + ' 已加入！');
-    }
+    if (m.room) { net.room = m.room; syncPlayersFromRoom(m.room); }
+    if (inRoom() && !running && !gameOver) { showWaitRoom(); showModeNotice((m.name || '有玩家') + ' 加入了房间'); }
     return;
   }
   if (m.type === 'peerLeft') {
-    if (net && net.role === 'host') {
-      net.guestName = null;
-      if (running || gameOver) { netPeerGone('对方已断开'); }
-      else { showWaitRoom('host'); showModeNotice('对方已离开房间'); }
+    const p = players.get(m.id);
+    if (p) { removePeerEntity(p); players.delete(m.id); }
+    if (m.room && net) { net.room = m.room; syncPlayersFromRoom(m.room); }
+    if (inRoom() && !running && !gameOver) {
+      showWaitRoom();
+      showModeNotice((m.name || '有玩家') + ' 离开了房间');
+    } else if (inRoom()) {
+      showModeNotice((m.name || '有玩家') + ' 已退出对局');
     }
     return;
   }
@@ -1620,7 +1716,7 @@ function handleServerMsg(m) {
     else { goBackToLobby(); showModeNotice('房主已解散房间'); }
     return;
   }
-  if (m.type === 'roomMsg') { handleNetMsg(m.data); return; }
+  if (m.type === 'roomMsg') { handleNetMsg(m.from, m.data); return; }
   if (m.type === 'roomFull') {
     lpStatus.textContent = '无法加入：' + (m.reason || '房间已满');
     showModeNotice('无法加入该房间');
@@ -1648,9 +1744,9 @@ function showLobby() {
 
 function renderLobbyRooms() {
   if (!lobbyPanel || lobbyPanel.style.display !== 'flex') return;
-  lpCount.textContent = lobbyRooms.length ? ('房间 ' + lobbyRooms.length + ' 间 · 每间 2 人') : '暂无房间';
+  lpCount.textContent = lobbyRooms.length ? ('房间 ' + lobbyRooms.length + ' 间 · 每间最多 4 人') : '暂无房间';
   if (!lobbyRooms.length) {
-    lpRooms.innerHTML = '<div class="lp-empty">大厅空空的——点「＋ 创建房间」开一局，<br>把 4 位房间号告诉朋友，对方输入后即可加入</div>';
+    lpRooms.innerHTML = '<div class="lp-empty">大厅空空的——点「＋ 创建房间」开一局，<br>把 4 位房间号告诉朋友，他们输入后即可加入（2~4 人混战）</div>';
     return;
   }
   let html = '';
@@ -1674,63 +1770,66 @@ function renderLobbyRooms() {
   lpRooms.innerHTML = html;
 }
 
-function enterRoom(role, room) {
-  removePeerEntity();
+function enteredRoom(role, room) {
+  if (!net) return;
   net.role = role;
   net.roomId = room.id;
-  net.hostName = (role === 'host') ? myName : (room.hostName || '房主');
-  net.guestName = (role === 'guest') ? myName : (room.guestName || null);
-  if (role === 'host') {
-    guestEntity = makePlayerEntity(0x3c8ae0);
-    scene.add(guestEntity);
-    guestEntity.visible = false;
-  } else {
-    hostEntity = makePlayerEntity(0xe08a3c);
-    scene.add(hostEntity);
-    hostEntity.visible = false;
-  }
+  net.room = room;
+  removeAllPeerEntities();
+  syncPlayersFromRoom(room);
   lobbyPanel.style.display = 'none';
   waitRoom.style.display = 'flex';
   waitCode.textContent = room.id;
   overlay.classList.remove('hidden');
   updateHud();
-  showWaitRoom(role);
+  showWaitRoom();
 }
 
-function showWaitRoom(role) {
-  const hName = (net && net.hostName) || '房主';
-  const gName = net ? net.guestName : null;
-  const code = waitCode.textContent || '';
-  if (role === 'host') {
-    waitMembers.innerHTML =
-      '<div class="wm-item"><span>房主（你）· ' + escName(hName) + '</span><span class="wm-tag">✓ 在线</span></div>' +
-      '<div class="wm-item"><span>加入者' + (gName ? ' · ' + escName(gName) : '') + '</span>' +
-      '<span class="wm-tag' + (gName ? '' : ' wm-wait') + '">' + (gName ? '✓ 已加入' : '等待加入…') + '</span></div>';
-    waitStart.disabled = !gName;
-    waitStatus.textContent = gName
-      ? '两名玩家已就绪，点【开始游戏】开始 1v1 单挑（场上没有机器人，只有你们两个）'
-      : '把房间号 ' + code + ' 发给朋友，让他在大厅输入框加入（或直接点列表里的【加入】）';
+/* 等待室：列出房间里所有人 + 空位。房主看得到开始按钮，其他人只能等 */
+function showWaitRoom() {
+  if (!net || !net.room) return;
+  const room = net.room;
+  const members = room.members || [];
+  let html = '';
+  members.forEach(function (m) {
+    const isMe = (m.id === myId);
+    const isHost = (m.id === room.hostId);
+    html += '<div class="wm-item"><span>' + escName(m.name) + (isMe ? '（你）' : '') +
+      (isHost ? ' · 房主' : '') + '</span><span class="wm-tag">✓ 在线</span></div>';
+  });
+  for (let i = members.length; i < 4; i++) {
+    html += '<div class="wm-item wm-slot"><span>空位</span><span class="wm-tag wm-wait">等待加入…</span></div>';
+  }
+  waitMembers.innerHTML = html;
+
+  const n = members.length;
+  if (amHost()) {
+    waitStart.disabled = (n < 2);
+    waitStart.textContent = '开始游戏';
+    waitStatus.textContent = (n < 2)
+      ? '把房间号 ' + room.id + ' 发给朋友，至少 2 人才能开战（最多 4 人）'
+      : (n + ' 人就绪 · 先到 ' + killTarget + ' 杀获胜 · 死了 ' + (RESPAWN_MS / 1000) + ' 秒后随机点复活');
   } else {
-    waitMembers.innerHTML =
-      '<div class="wm-item"><span>房主 · ' + escName(hName) + '</span><span class="wm-tag">✓ 在线</span></div>' +
-      '<div class="wm-item"><span>加入者（你）· ' + escName(gName || myName) + '</span><span class="wm-tag">✓ 已加入</span></div>';
     waitStart.disabled = true;
     waitStart.textContent = '等待房主开始…';
-    waitStatus.textContent = '已加入房间 ' + code + '，等待房主开始游戏…';
+    waitStatus.textContent = '已加入房间 ' + room.id + '（' + n + '/4 人），等待房主开始游戏…';
   }
 }
 
 function exitRoomLocal() {
-  removePeerEntity();
+  removeAllPeerEntities();
+  players.clear();
   try { document.exitPointerLock(); } catch (e) {}
   running = false;
   firing = false;
   gameOver = false;
+  meAlive = true;
+  myRespawnAt = 0;
   if (countdownOverlay) countdownOverlay.style.display = 'none';
   if (countT) { clearInterval(countT); countT = null; }
   countdownActive = false;
   pendingStart = false;
-  if (net) { net.role = null; net.roomId = null; net.hostName = ''; net.guestName = null; }
+  if (net) { net.role = null; net.roomId = null; net.room = null; }
   updateHud();
 }
 
@@ -1788,252 +1887,329 @@ function manualCopyRoom(t) {
   document.body.removeChild(ta);
 }
 
+/* ---------- 对局流程 ---------- */
+
+/* 房主点【开始游戏】：至少 2 人才能开 */
 function hostStartMatch() {
-  if (!net || !net.connected || !net.roomId || net.role !== 'host' || !net.guestName) return;
+  if (!amHost() || players.size < 2) return;
   sendServer({ type: 'roomState', state: 'playing' });
-  if (isDuel()) rollDuelSpawns();
-  netSend({ type: 'start' });
-  hideOverlay();
+  hostStartRound();
+}
+
+/* 房主开局 / 重开：抽出生点 → 重置全员 → 广播 → 倒计时。
+ * 出生点和全员血量击杀都由房主一份说了算，其他人只负责照着站。 */
+function hostStartRound() {
+  if (!amHost()) return;
+  const ids = Array.from(players.keys());
+  const assign = makeSpawnAssignment(ids);
+
+  players.forEach(function (p) {
+    p.hp = 100; p.kills = 0; p.alive = true; p.respawnAt = 0;
+    if (p.id === myId) p.weapon = weaponKey;
+    const sp = assign[p.id];
+    if (sp) { p.x = sp.x; p.z = sp.z; p.y = player.eye; p.yaw = sp.yaw; }
+    if (p.id !== myId) ensurePeerEntity(p);   // 房主负责给每个对手建可见模型
+    if (p.entity) p.entity.visible = false;
+  });
+  myKills = 0; meAlive = true; myRespawnAt = 0;
+
+  netSend({ type: 'start', assign: assign, target: killTarget });
+  applyLocalSpawn(assign[myId]);
   resetGame();
+  hideOverlay();
+  startCountdown(3, function () { running = true; lockPointer(); });
+}
+
+/* 其他人收到房主的开局指令 */
+function clientStartMatch(assign, target) {
+  if (typeof target === 'number' && target > 0) killTarget = target;
+  players.forEach(function (p) {
+    p.hp = 100; p.kills = 0; p.alive = true; p.respawnAt = 0;
+    const sp = assign && assign[p.id];
+    if (sp) { p.x = sp.x; p.z = sp.z; p.y = player.eye; p.yaw = sp.yaw; }
+    if (p.id !== myId) ensurePeerEntity(p);
+    if (p.entity) p.entity.visible = false;
+  });
+  myKills = 0; meAlive = true; myRespawnAt = 0;
+  if (assign && assign[myId]) applyLocalSpawn(assign[myId]);
+  resetGame();
+  hideOverlay();
   startCountdown(3, function () { running = true; lockPointer(); });
 }
 
-function beginMatchAsGuest() {
-  hideOverlay();
-  resetGame();
-  startCountdown(3, function () { running = true; lockPointer(); });
-}
-
-/* 加入者被判负时的本地收尾（正常由房主的 gameover 触发，这里是兜底不卡死） */
-function guestShowDefeat() {
-  if (gameOver) return;
-  gameOver = true;
-  running = false;
-  firing = false;
-  try { document.exitPointerLock(); } catch (e) {}
-  showOverlay('游戏结束', '你被击败了<br>' + escName((net && net.hostName) || '房主') + ' 获胜', '再来一局', true);
-  updateHud();
-}
-
-/* 房主抽签决定本回合出生点，并同步给加入者。
- * 必须先于 start / reset 发出去，加入者收到后才好照这个位置站。 */
-function rollDuelSpawns() {
-  duelSpawns = pickDuelSpawns();
-  netSend({ type: 'spawns', host: duelSpawns.host, guest: duelSpawns.guest });
-}
-
-/* 开新一局：由房主统一发起，两边同时重置并倒计时 */
-function startDuelRound() {
-  rollDuelSpawns();
-  resetGame();
-  netSend({ type: 'reset' });
-  hideOverlay();
-  startCountdown(3, function () { running = true; lockPointer(); });
+/* 把自己挪到某个出生点（模型原点约定：脚底，所以 y 用眼高 player.eye） */
+function applyLocalSpawn(sp) {
+  if (!sp) return;
+  camera.position.set(sp.x, player.eye, sp.z);
+  camera.rotation.set(0, sp.yaw || 0, 0);
+  camera.rotation.order = 'YXZ';
+  player.velY = 0; player.onGround = true;
 }
 
 /* ---------- 对局消息（房主权威） ---------- */
-function handleNetMsg(m) {
-  if (!net || !net.connected) return;
-  if (net.role === 'host') hostHandleMsg(m);
-  else if (net.role === 'guest') guestHandleMsg(m);
+function handleNetMsg(from, m) {
+  if (!net || !net.connected || !m) return;
+  if (amHost()) hostHandleMsg(from, m);
+  else clientHandleMsg(m);
 }
 
-function hostHandleMsg(m) {
+/* ---------- 房主：接收上报、裁决伤害、广播状态 ---------- */
+
+function hostHandleMsg(from, m) {
+  const p = players.get(from);
+  if (!p || p.id === myId) return;              // 只收别人的上报
+
   if (m.type === 'me') {
-    guestSim.x = m.x; guestSim.z = m.z; guestSim.yaw = m.yaw;
-    if (typeof m.y === 'number' && isFinite(m.y)) guestSim.y = m.y;   // 眼高，能反映跳跃
-    if (m.weapon && m.weapon !== guestSim.weapon) {
-      guestSim.weapon = m.weapon;
-      setEntityWeapon(guestEntity, guestSim.weapon);                  // 对方换枪，手里的模型跟着换
-    }
-    if (guestEntity) guestEntity.rotation.y = m.yaw;
+    if (typeof m.x === 'number' && isFinite(m.x)) p.x = m.x;
+    if (typeof m.z === 'number' && isFinite(m.z)) p.z = m.z;
+    if (typeof m.y === 'number' && isFinite(m.y)) p.y = m.y;     // 眼高，能反映跳跃
+    if (typeof m.yaw === 'number' && isFinite(m.yaw)) p.yaw = m.yaw;
+    if (m.weapon && WEAPON_DEFS[m.weapon]) p.weapon = m.weapon;
+    ensurePeerEntity(p);          // 房主这边也要把对手模型造出来，不然没东西可打
     return;
   }
-  if (m.type === 'shoot') { hostHandleShoot(m); return; }
-  if (m.type === 'gameover') {
-    /* 单挑：胜负由房主单方面裁定，不采信加入者的结论 */
-    if (isDuel()) return;
-    // 加入者端报告它已被击败 => 本机胜
-    if (!gameOver) {
-      gameOver = true;
-      running = false;
-      try { document.exitPointerLock(); } catch (e) {}
-      showOverlay('游戏结束', '你赢了！对方已被击败', '再来一局', true);
-    }
-    return;
-  }
+  if (m.type === 'shoot') { hostHandleShot(p, m); return; }
   if (m.type === 'reset') {
     if (countdownActive) return;
-    if (gameOver) {
-      if (isDuel()) startDuelRound();
-      else { resetGame(); hideOverlay(); startCountdown(3, function () { running = true; lockPointer(); }); }
-    }
+    if (gameOver) hostStartRound();
     return;
   }
 }
 
-function hostHandleShoot(m) {
-  if (isDuel()) { hostHandleDuelShoot(m); return; }
-  const w = WEAPON_DEFS[guestSim.weapon] || WEAPON_DEFS.pistol;
-  const origin = new THREE.Vector3(m.x, m.y, m.z);
+/* 我"看到的"所有对手的受击件 —— 双方都用它做本地弹道终点 */
+function opponentHitParts() {
   const parts = [];
-  for (let i = 0; i < enemies.length; i++) {
-    const e = enemies[i];
-    if (e.alive && e.spawnT >= 1) {
-      e.group.traverse(function (o) { if (o.isMesh) parts.push(o); });
+  players.forEach(function (p) {
+    if (p.id === myId || !p.alive) return;
+    if (p.entity && p.entity.visible) {
+      p.entity.traverse(function (o) { if (o.isMesh && o.userData.isPlayerPart) parts.push(o); });
     }
-  }
-  for (let i = 0; i < w.pellets; i++) {
-    const dir = new THREE.Vector3(m.dx, m.dy, m.dz).normalize();
-    if (w.spread > 0) {
-      const right = new THREE.Vector3().crossVectors(dir, UP).normalize();
-      const trueUp = new THREE.Vector3().crossVectors(right, dir).normalize();
-      dir.add(right.multiplyScalar((Math.random() - 0.5) * 2 * w.spread));
-      dir.add(trueUp.multiplyScalar((Math.random() - 0.5) * 2 * w.spread));
-      dir.normalize();
-    }
-    raycaster.set(origin, dir);
-    raycaster.far = 120;
-    const enemyHits = raycaster.intersectObjects(parts, false);
-    const wallHits = raycaster.intersectObjects(obstacleMeshes, false);
-    const wallD = wallHits.length ? wallHits[0].distance : Infinity;
-    if (enemyHits.length && enemyHits[0].distance < wallD) {
-      const h = enemyHits[0];
-      if (h.object.userData.isEnemyPart) {
-        const e = enemies[h.object.userData.enemyId];
-        if (e && e.alive) {
-          const headshot = h.object.userData.head === true;
-          hitEnemy(e, headshot ? w.damage * 1.5 : w.damage, headshot, true);
-        }
-      }
-    }
-  }
+  });
+  return parts;
 }
 
-/* 单挑：加入者开火 → 房主拿"房主自己的受击盒"裁决，命中就往自己身上扣血 */
-function hostHandleDuelShoot(m) {
-  if (!running || gameOver || !guestSim.alive) return;
+/* 房主裁决某个人的开火：目标 = 除他以外的所有人 + 墙。
+ * 房主自己是用相机下挂的隐形受击盒表示的，别人用的是可见模型里的受击件。 */
+function shotTargetsFor(shooterId) {
+  const parts = [];
+  players.forEach(function (p) {
+    if (p.id === shooterId || !p.alive) return;
+    if (p.id === myId) {
+      hostHitbox.traverse(function (o) { if (o.isMesh) parts.push(o); });
+    } else if (p.entity && p.entity.visible) {
+      p.entity.traverse(function (o) { if (o.isMesh && o.userData.isPlayerPart) parts.push(o); });
+    }
+  });
+  return parts;
+}
+
+function resolveHitPlayer(mesh) {
+  if (!mesh || !mesh.userData) return 0;
+  if (mesh.userData.playerId) return mesh.userData.playerId;
+  if (mesh.userData.isHostPart) return myId;
+  return 0;
+}
+
+function spreadDir(dir, spread) {
+  if (!(spread > 0)) return dir;
+  const right = new THREE.Vector3().crossVectors(dir, UP).normalize();
+  const trueUp = new THREE.Vector3().crossVectors(right, dir).normalize();
+  dir.add(right.multiplyScalar((Math.random() - 0.5) * 2 * spread));
+  dir.add(trueUp.multiplyScalar((Math.random() - 0.5) * 2 * spread));
+  return dir.normalize();
+}
+
+function hostHandleShot(shooter, m) {
+  if (!running || gameOver || !shooter.alive) return;
   if (![m.x, m.y, m.z, m.dx, m.dy, m.dz].every(function (v) { return typeof v === 'number' && isFinite(v); })) return;
-  const w = WEAPON_DEFS[guestSim.weapon] || WEAPON_DEFS.pistol;
+  const w = WEAPON_DEFS[shooter.weapon] || WEAPON_DEFS.pistol;
   const origin = new THREE.Vector3(m.x, m.y, m.z);
-  const targets = hostHitParts().concat(obstacleMeshes);
+  const targets = shotTargetsFor(shooter.id).concat(obstacleMeshes);
   let hitAny = false, headAny = false;
   for (let i = 0; i < w.pellets; i++) {
-    if (gameOver) break;                       // 中途被打死就不用再算了
-    const dir = new THREE.Vector3(m.dx, m.dy, m.dz).normalize();
-    if (w.spread > 0) {
-      const right = new THREE.Vector3().crossVectors(dir, UP).normalize();
-      const trueUp = new THREE.Vector3().crossVectors(right, dir).normalize();
-      dir.add(right.multiplyScalar((Math.random() - 0.5) * 2 * w.spread));
-      dir.add(trueUp.multiplyScalar((Math.random() - 0.5) * 2 * w.spread));
-      dir.normalize();
-    }
+    const dir = spreadDir(new THREE.Vector3(m.dx, m.dy, m.dz).normalize(), w.spread);
     raycaster.set(origin, dir);
     raycaster.far = 120;
     const hits = raycaster.intersectObjects(targets, false);   // 已按距离排序，墙体挡枪自然生效
     if (!hits.length) continue;
     const h = hits[0];
-    if (h.object.userData.isHostPart) {
-      hitAny = true;
-      const headshot = h.object.userData.head === true;
-      if (headshot) headAny = true;
-      damagePlayer(headshot ? w.damage * 1.5 : w.damage);
-    }
+    const vid = resolveHitPlayer(h.object);
+    if (!vid) continue;
+    hitAny = true;
+    const head = h.object.userData.head === true;
+    if (head) headAny = true;
+    hostDamage(vid, head ? w.damage * 1.5 : w.damage, head, shooter.id);
   }
-  if (hitAny) netSend({ type: 'hit', headshot: headAny });
+  if (hitAny) netSend({ type: 'hit', by: shooter.id, headshot: headAny });
 }
 
-function guestHandleMsg(m) {
-  if (m.type === 'spawns') {
-    /* 房主抽好的本回合出生点，照它站位 */
-    if (m.host && typeof m.host.x === 'number' && typeof m.host.z === 'number') {
-      duelSpawns.host = { x: m.host.x, z: m.host.z, yaw: m.host.yaw || 0 };
+/* 房主裁决伤害 —— 全场唯一改血的地方 */
+function hostDamage(victimId, dmg, headshot, byId) {
+  const v = players.get(victimId);
+  if (!v || !v.alive) return;
+  const by = players.get(byId);
+  v.hp = Math.max(0, v.hp - dmg);
+  netSend({ type: 'hurt', target: victimId, hp: v.hp, amount: dmg, headshot: !!headshot, by: byId });
+
+  if (victimId === myId) {
+    health = v.hp; lastDamage = dmg;
+    flashDamage(); playHurt(); updateHud();
+  }
+  if (v.hp > 0) return;
+
+  v.alive = false;
+  v.respawnAt = Date.now() + RESPAWN_MS;
+  if (victimId === myId) { meAlive = false; myRespawnAt = v.respawnAt; firing = false; }
+  if (by && by.id !== v.id) by.kills += 1;
+  netSend({ type: 'kill', by: byId, victim: victimId, headshot: !!headshot, kills: by ? by.kills : 0 });
+  if (by && by.id === myId) { myKills = by.kills; playKill(); popScore(by.kills); }
+  if (by && by.kills >= killTarget) hostGameOver(by);
+  updateHud();
+}
+
+function scoreboardText() {
+  const arr = Array.from(players.values()).sort(function (a, b) { return b.kills - a.kills; });
+  return arr.map(function (p) { return escName(p.name) + ' ' + p.kills; }).join(' · ');
+}
+
+function hostGameOver(winner) {
+  gameOver = true;
+  running = false;
+  firing = false;
+  try { document.exitPointerLock(); } catch (e) {}
+  netSend({ type: 'gameover', winner: winner.id, winnerName: winner.name, kills: winner.kills });
+  const iWon = (winner.id === myId);
+  showOverlay('比赛结束',
+    (iWon ? '你赢了！<br>' : escName(winner.name) + ' 获胜<br>') + '最终战绩：' + scoreboardText(),
+    '再来一局', true);
+  updateHud();
+}
+
+/* 房主每帧推进复活计时（用挂钟时间，和 respawnAt 的 Date.now() 同一把尺子） */
+function hostTickRespawn() {
+  const now = Date.now();
+  players.forEach(function (p) {
+    if (p.alive || !p.respawnAt || now < p.respawnAt) return;
+    const sp = pickRespawnPoint(p.id);
+    p.hp = 100; p.alive = true; p.respawnAt = 0;
+    p.x = sp.x; p.z = sp.z; p.y = player.eye; p.yaw = sp.yaw;
+    if (p.id === myId) {
+      meAlive = true; myRespawnAt = 0; health = 100;
+      applyLocalSpawn(sp);
+      updateHud();
+    } else {
+      netSend({ type: 'respawn', target: p.id, x: sp.x, z: sp.z, yaw: sp.yaw });
     }
-    if (m.guest && typeof m.guest.x === 'number' && typeof m.guest.z === 'number') {
-      duelSpawns.guest = { x: m.guest.x, z: m.guest.z, yaw: m.guest.yaw || 0 };
-    }
+  });
+}
+
+/* 房主把自己这一帧的位置写进权威表，然后广播全量快照 */
+function hostSyncSelf() {
+  const me = players.get(myId);
+  if (!me) return;
+  me.x = camera.position.x; me.y = camera.position.y; me.z = camera.position.z;
+  me.yaw = camera.rotation.y; me.weapon = weaponKey;
+  me.hp = health; me.alive = meAlive;
+  if (!meAlive && !me.respawnAt) me.respawnAt = myRespawnAt || (Date.now() + RESPAWN_MS);
+}
+
+function hostSendSnap() {
+  const arr = [];
+  players.forEach(function (p) {
+    arr.push({
+      id: p.id,
+      x: Math.round(p.x * 100) / 100, y: Math.round(p.y * 100) / 100, z: Math.round(p.z * 100) / 100,
+      yaw: Math.round((p.yaw || 0) * 100) / 100,
+      w: p.weapon, hp: p.hp, k: p.kills, al: p.alive
+    });
+  });
+  netSend({ type: 'snap', p: arr });
+}
+
+/* ---------- 非房主：上报自己、照抄房主下发的状态 ---------- */
+
+function clientHandleMsg(m) {
+  if (m.type === 'start') { clientStartMatch(m.assign, m.target); return; }
+  if (m.type === 'snap') { clientApplySnap(m); return; }
+
+  if (m.type === 'hit') {
+    if (m.by === myId) { showHitMarker(); playHit(); }
     return;
   }
-  if (m.type === 'start') { beginMatchAsGuest(); return; }
-  if (m.type === 'snap') {
-    if (countdownActive) return;
-    if (!running) { running = true; lockPointer(); }
-    if (hostEntity) {
-      /* m.host.y 是房主的眼高；模型原点在脚底，减掉眼高才是该站的高度 */
-      const feetY = (typeof m.host.y === 'number' ? m.host.y : player.eye) - player.eye;
-      hostEntity.position.set(m.host.x, feetY, m.host.z);
-      hostEntity.rotation.y = m.host.yaw;
-      hostEntity.visible = !!m.host.alive;
-      setEntityWeapon(hostEntity, m.host.weapon);
-    }
-    if (isDuel()) {
-      /* 单挑：双方血量全部以房主为准，本地只做表现 */
-      if (typeof m.host.hp === 'number') opHealth = m.host.hp;
-      if (m.guest && typeof m.guest.hp === 'number') health = m.guest.hp;
-      if (m.wins) { duelWins.host = m.wins.host | 0; duelWins.guest = m.wins.guest | 0; }
-      hostSim.x = m.host.x; hostSim.z = m.host.z; hostSim.alive = !!m.host.alive;
-      if (health <= 0) guestShowDefeat();      // 兜底：万一 gameover 没收到也不会卡在 0 血
-      updateHud();
-      return;
-    }
-    const arr = m.enemies || [];
-    for (let i = 0; i < arr.length; i++) {
-      const s = arr[i];
-      const e = enemies[s.i];
-      if (!e) continue;
-      e.group.position.x = s.x;
-      e.group.position.z = s.z;
-      e.group.rotation.y = s.yaw || 0;
-      if (s.alive) {
-        e.group.visible = true;
-        e.group.scale.setScalar(s.spawnT >= 1 ? 1 : (s.scale || 0.01));
-      } else {
-        e.group.visible = false;
-      }
-    }
+  if (m.type === 'hurt') {
+    if (m.target !== myId) return;
+    if (typeof m.hp === 'number') health = m.hp;
+    if (typeof m.amount === 'number') lastDamage = m.amount;
+    /* 本地起一个复活倒计时：复活时长是固定常量，不用等房主再发一遍 */
+    if (health <= 0 && meAlive) { meAlive = false; firing = false; myRespawnAt = Date.now() + RESPAWN_MS; }
+    flashDamage(); playHurt(); updateHud();
     return;
   }
   if (m.type === 'kill') {
-    const pts = m.headshot ? 150 : 100;
-    score += pts;
-    kills += 1;
-    playKill();
-    popScore(pts);
-    showHitMarker();
+    const by = players.get(m.by), vic = players.get(m.victim);
+    if (by) by.kills = m.kills | 0;
+    if (vic) { vic.alive = false; vic.hp = 0; }
+    if (m.by === myId) { myKills = m.kills | 0; playKill(); popScore(myKills); showHitMarker(); }
     updateHud();
     return;
   }
-  if (m.type === 'hit') { showHitMarker(); playHit(); return; }
-  if (m.type === 'hurt') {
-    /* 单挑：血量以房主下发的为准，这里只做受击表现，胜负交给 gameover 收尾 */
-    if (typeof m.hp === 'number') health = m.hp;
-    flashDamage();
-    playHurt();
+  if (m.type === 'respawn') {
+    if (m.target !== myId) return;
+    meAlive = true; myRespawnAt = 0; health = 100;
+    applyLocalSpawn({ x: m.x, z: m.z, yaw: m.yaw });
     updateHud();
     return;
   }
   if (m.type === 'gameover') {
     if (gameOver) return;
-    const iWon = m.winner === 'guest';
-    gameOver = true;
-    running = false;
-    firing = false;
-    if (m.wins) { duelWins.host = m.wins.host | 0; duelWins.guest = m.wins.guest | 0; }
+    gameOver = true; running = false; firing = false;
     try { document.exitPointerLock(); } catch (e) {}
-    const hn = escName((net && net.hostName) || '房主');
-    showOverlay('游戏结束',
-      isDuel()
-        ? (iWon ? '你赢了！<br>' + hn + ' 已被击败' : '你被击败了<br>' + hn + ' 获胜')
-        : (iWon ? '你赢了！房主已被击败' : '你被击败了<br>房主获胜'),
+    const iWon = (m.winner === myId);
+    showOverlay('比赛结束',
+      (iWon ? '你赢了！<br>' : escName(m.winnerName || '对手') + ' 获胜<br>') + '最终战绩：' + scoreboardText(),
       '再来一局', true);
     updateHud();
     return;
   }
-  if (m.type === 'reset') {
-    if (countdownActive) return;
-    if (gameOver) beginMatchAsGuest();
-    return;
+}
+
+/* 全量快照：别人的位置/朝向/血量/武器全照抄；自己的位置以本地预测为准，只采纳血量与存活 */
+function clientApplySnap(m) {
+  if (countdownActive) return;
+  if (!running && !gameOver) { hideOverlay(); running = true; lockPointer(); }   // 兜底：万一没收到 start
+
+  const arr = m.p || [];
+  for (let i = 0; i < arr.length; i++) {
+    const s = arr[i];
+    const p = players.get(s.id);
+    if (!p) continue;
+    p.kills = s.k | 0;
+    p.alive = !!s.al;
+    p.weapon = s.w || p.weapon;
+
+    if (s.id === myId) {
+      if (typeof s.hp === 'number') health = s.hp;
+      if (!p.alive) {
+        firing = false;
+        if (meAlive) { meAlive = false; myRespawnAt = Date.now() + RESPAWN_MS; }
+      } else if (!meAlive) {
+        meAlive = true; myRespawnAt = 0;
+      }
+      continue;
+    }
+    p.x = s.x; p.y = s.y; p.z = s.z; p.yaw = s.yaw || 0;
+    const e = ensurePeerEntity(p);
+    if (e) {
+      e.visible = p.alive;
+      if (p.alive) {
+        /* s.y 是对方的眼高；模型原点在脚底，减掉眼高才是该站的高度 */
+        e.position.set(s.x, (typeof s.y === 'number' ? s.y : player.eye) - player.eye, s.z);
+        e.rotation.y = s.yaw || 0;
+        setEntityWeapon(e, p.weapon);
+      }
+    }
   }
+  updateHud();
 }
 
 /* ---------- 界面事件 ---------- */
@@ -2095,7 +2271,7 @@ function showOverlay(title, desc, btnText, showLobbyBtn) {
 /* 开始界面说明随模式切换：单人是打机器人，单挑是打对方 */
 function updateStartDesc() {
   overlayDesc.innerHTML = isDuel()
-    ? '<kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 移动 ｜ 鼠标 瞄准 ｜ <kbd>左键</kbd> 射击 ｜ <kbd>空格</kbd> 跳跃 ｜ <kbd>Shift</kbd> 加速<br><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> 切换武器 ｜ <kbd>R</kbd> 换弹 ｜ <b>1v1 单挑</b>：把对面打没血就赢一回合'
+    ? '<kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 移动 ｜ 鼠标 瞄准 ｜ <kbd>左键</kbd> 射击 ｜ <kbd>空格</kbd> 跳跃 ｜ <kbd>Shift</kbd> 加速<br><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> 切换武器 ｜ <kbd>R</kbd> 换弹 ｜ <b>2~4 人混战</b>：先到 ' + killTarget + ' 杀获胜，被击倒后 ' + (RESPAWN_MS / 1000) + ' 秒随机点复活'
     : '<kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 移动 ｜ 鼠标 瞄准 ｜ <kbd>左键</kbd> 射击 ｜ <kbd>空格</kbd> 跳跃 ｜ <kbd>Shift</kbd> 加速<br><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> 切换武器 ｜ <kbd>R</kbd> 换弹 ｜ 敌人发现你之后会追击并攻击你！';
 }
 
@@ -2177,13 +2353,13 @@ function startOrResume() {
   /* 倒计时进行中：任何点击都不该把它重新数一遍 */
   if (countdownActive) return;
   if (gameMode === 'multi') {
-    if (!net || !net.connected) {
+    if (!inRoom()) {
       showLobby();
       return;
     }
     if (gameOver) {
-      /* 单挑的重开统一由房主发起，加入者只发个请求，避免两边各重置一次 */
-      if (net.role === 'host') startDuelRound();
+      /* 重开统一由房主发起，其他人只发个请求，避免各自重置、出生点还不一致 */
+      if (amHost()) hostStartRound();
       else netSend({ type: 'reset' });
       return;
     }
@@ -2299,31 +2475,18 @@ function animate(now) {
     }
     if (firing && WEAPON_DEFS[weaponKey].auto && canShoot()) shoot();
     updatePlayer(dt);
-    if (!(net && net.role === 'guest')) updateEnemies(dt, now / 1000);
+    updateEnemies(dt, now / 1000);      // 联机模式下它自己会直接 return
+  }
 
-    if (net && net.role === 'host' && running) {
+  /* 联机同步：**不受指针锁定影响**。房主按 Esc 只是自己暂停，
+   * 不该把整局冻住——以前这块包在 running && locked 里面，房主一暂停所有人都卡住。 */
+  if (isDuel() && inRoom() && (running || gameOver)) {
+    if (amHost()) {
+      hostSyncSelf();
+      hostTickRespawn();
       netTimer -= dt;
-      if (netTimer <= 0) {
-        netTimer = 0.06;
-        netSend({
-          type: 'snap',
-          host: {
-            x: camera.position.x, y: camera.position.y, z: camera.position.z,
-            yaw: camera.rotation.y, alive: !gameOver && health > 0, hp: health,
-            weapon: weaponKey
-          },
-          guest: { hp: guestSim.hp, alive: guestSim.alive },
-          wins: { host: duelWins.host, guest: duelWins.guest },
-          enemies: isDuel() ? [] : enemies.map(function (e, i) {
-            return {
-              i: i, x: e.group.position.x, z: e.group.position.z,
-              yaw: e.group.rotation.y, state: e.state, alive: e.alive,
-              spawnT: e.spawnT, scale: e.group.scale.x
-            };
-          })
-        });
-      }
-    } else if (net && net.role === 'guest' && running && locked) {
+      if (netTimer <= 0) { netTimer = 0.06; hostSendSnap(); }   // 房主广播全量快照
+    } else {
       netTimer -= dt;
       if (netTimer <= 0) {
         netTimer = 0.05;
@@ -2332,12 +2495,18 @@ function animate(now) {
     }
   }
 
-  if (guestEntity) {
-    /* guestSim.y 是对方的眼高；模型原点在脚底，所以减去眼高才是脚该在的高度。
-     * （之前这里写死 0、同步帧里又直接把眼高当脚用，两边看到的高度就对不上了） */
-    guestEntity.position.set(guestSim.x, guestSim.y - player.eye, guestSim.z);
-    guestEntity.rotation.y = guestSim.yaw;
-    guestEntity.visible = guestSim.alive && net && net.connected;
+  /* 把其他玩家的可见模型摆到权威数据对应的位置 */
+  if (isDuel()) {
+    players.forEach(function (p) {
+      if (p.id === myId || !p.entity) return;
+      const e = p.entity;
+      e.visible = p.alive && !!(net && net.connected);
+      if (e.visible) {
+        /* p.y 是眼高；模型原点在脚底，减去眼高才是该站的高度 */
+        e.position.set(p.x, (typeof p.y === 'number' ? p.y : player.eye) - player.eye, p.z);
+        updateNameTagScale(e);
+      }
+    });
   }
 
   drawMinimap();
@@ -2359,27 +2528,37 @@ requestAnimationFrame(animate);
  * forceLock 是给无头浏览器测试用的（headless 下拿不到鼠标指针锁定）。 */
 window.__fps = {
   state: function () {
+    const roster = [];
+    players.forEach(function (p) {
+      roster.push({
+        id: p.id, name: p.name, isHost: !!p.isHost, me: (p.id === myId),
+        x: p.x, y: p.y, z: p.z, yaw: p.yaw, hp: p.hp, kills: p.kills, alive: p.alive,
+        weapon: p.weapon, hasEntity: !!p.entity, entityVisible: !!(p.entity && p.entity.visible)
+      });
+    });
     return {
       gameMode: gameMode, isDuel: isDuel(),
       running: running, locked: locked, gameOver: gameOver,
-      health: health, opHealth: opHealth, score: score, kills: kills, lastDamage: lastDamage,
-      wins: { host: duelWins.host, guest: duelWins.guest },
+      health: health, score: score, kills: kills, lastDamage: lastDamage,
+      myId: myId, myKills: myKills, meAlive: meAlive, respawnAt: myRespawnAt,
+      respawnLeft: meAlive ? 0 : Math.max(0, Math.ceil(((myRespawnAt || 0) - Date.now()) / 1000)),
+      killTarget: killTarget,
       role: net && net.role, roomId: net && net.roomId,
-      hostName: net && net.hostName, guestName: net && net.guestName,
+      myName: myName,
+      memberNames: (net && net.room && net.room.members) ? net.room.members.map(function (m) { return m.name; }) : [],
+      playerCount: players.size,
+      roster: roster,
       pos: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
       yaw: camera.rotation.y,
       enemiesVisible: enemies.filter(function (e) { return e.group.visible; }).length,
-      guestSim: { x: guestSim.x, z: guestSim.z, hp: guestSim.hp, alive: guestSim.alive },
-      hostSim: { x: hostSim.x, z: hostSim.z, alive: hostSim.alive },
       duelBarOn: duelBar.classList.contains('on'),
       countdownActive: countdownActive,
       countdownNum: countdownNum.textContent,
-      spawns: { host: { x: duelSpawns.host.x, z: duelSpawns.host.z, yaw: duelSpawns.host.yaw },
-                guest: { x: duelSpawns.guest.x, z: duelSpawns.guest.z, yaw: duelSpawns.guest.yaw } },
-      spawnCandidateCount: DUEL_SPAWN_RINGS.reduce(function (n, r) { return n + r.length; }, 0),
+      sbText: sbRows ? sbRows.textContent : '',
+      respawnTipShown: respawnTip ? respawnTip.style.display === 'block' : false,
+      spawnCandidateCount: ALL_SPAWN_POINTS.length,
       spawnClearHere: spawnClear(camera.position.x, camera.position.z),
-      hpText: hpText.textContent, opHpText: dbOpHpNum.textContent,
-      myWins: dbMyWins.textContent, opWins: dbOpWins.textContent,
+      hpText: hpText.textContent,
       overlayTitle: overlayTitle.textContent, overlayDesc: overlayDesc.textContent,
       overlayHidden: overlay.classList.contains('hidden')
     };
@@ -2395,41 +2574,63 @@ window.__fps = {
     camera.rotation.x = Math.atan2(dy, Math.hypot(dx, dz));
     camera.rotation.z = 0;
   },
-  /* 对方模型的诊断信息：朝向/武器/高度/受击件数量 */
-  oppInfo: function () {
-    const ent = (net && net.role === 'host') ? guestEntity : hostEntity;
-    if (!ent) return null;
-    let meshes = 0, hitParts = 0, emissive = 0, legs = 0;
+  /* 某个对手模型的诊断信息：朝向/武器/高度/受击件数量。不传 id 就取第一个别人 */
+  oppInfo: function (id) {
+    let p = null;
+    if (id) p = players.get(id);
+    if (!p) { players.forEach(function (q) { if (!p && q.id !== myId) p = q; }); }
+    if (!p || !p.entity) return null;
+    const ent = p.entity;
+    let meshes = 0, hitParts = 0, emissive = 0, limbs = 0;
     ent.traverse(function (o) {
       if (!o.isMesh) return;
       meshes++;
       if (o.userData.isPlayerPart) hitParts++;
       if (o.material && o.material.emissiveIntensity > 1) emissive++;   // 眼睛
-      if (o.geometry && o.geometry.type === 'CylinderGeometry') legs++; // 胳膊/腿
+      if (o.geometry && o.geometry.type === 'CylinderGeometry') limbs++; // 胳膊/腿
     });
     return {
+      id: p.id, name: p.name, alive: p.alive, hp: p.hp, kills: p.kills,
       visible: ent.visible,
       y: ent.position.y,
       yaw: ent.rotation.y,
       gunKey: ent.userData.gunKey,
       gunChildren: ent.userData.gunSlot ? ent.userData.gunSlot.children.length : -1,
-      meshes: meshes,
-      hitParts: hitParts,
-      eyeMeshes: emissive,
-      limbs: legs,
+      meshes: meshes, hitParts: hitParts, eyeMeshes: emissive, limbs: limbs,
       torsoWorldY: ent.position.y + 1.24,
       headWorldY: ent.position.y + 1.95
     };
   },
+  /* 所有对手模型的诊断（多人混战用），返回 id -> 模型信息 */
+  allOppInfo: function () {
+    const out = {};
+    players.forEach(function (p) {
+      if (p.id === myId || !p.entity) return;
+      const ent = p.entity;
+      let meshes = 0, hitParts = 0;
+      ent.traverse(function (o) { if (o.isMesh) { meshes++; if (o.userData.isPlayerPart) hitParts++; } });
+      out[p.id] = {
+        name: p.name, visible: ent.visible, y: ent.position.y, gunKey: ent.userData.gunKey,
+        meshes: meshes, hitParts: hitParts,
+        tagName: ent.userData.tagName || null,
+        hasTag: !!ent.userData.nameTag,
+        tagScaleH: ent.userData.nameTag ? ent.userData.nameTag.scale.y : 0,
+        tagWorldY: ent.position.y + 2.85,
+        torsoWorldY: ent.position.y + 1.24, headWorldY: ent.position.y + 1.95
+      };
+    });
+    return out;
+  },
   jump: function () { player.velY = 7.2; player.onGround = false; },
   teleport: function (x, z) { camera.position.x = x; camera.position.z = z; },
-  sampleSpawns: function (n) {
+  sampleSpawns: function (n, count) {
     const out = [];
-    for (let i = 0; i < (n || 10); i++) out.push(pickDuelSpawns());
+    for (let i = 0; i < (n || 10); i++) out.push(makeSpawnAssignment(pickSpawnPoints(count || 4).map(function (_, k) { return 'p' + k; })));
     return out;
   },
   checkSpawnClear: function (x, z) { return spawnClear(x, z); },
   fire: function () { fireCd = 0; shoot(); },
+  setKillTarget: function (n) { if (n > 0) killTarget = n | 0; },
   forceLock: function (v) { locked = !!v; }
 };
 </script>

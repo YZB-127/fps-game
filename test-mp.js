@@ -83,8 +83,17 @@ function wsConnect(port) {
     function next(timeoutMs) {
       if (inbox.length) return Promise.resolve(inbox.shift());
       return new Promise(function (res, rej) {
-        const t = setTimeout(function () { rej(new Error('等待服务器消息超时')); }, timeoutMs || 3000);
-        waiters.push(function (m) { clearTimeout(t); res(m); });
+        let done = false;
+        const entry = function (m) { if (done) return; done = true; clearTimeout(t); res(m); };
+        /* 超时必须把自己从等待队列里摘掉，否则这条僵尸 waiter 会把下一条到达的消息吃掉 */
+        const t = setTimeout(function () {
+          if (done) return;
+          done = true;
+          const k = waiters.indexOf(entry);
+          if (k >= 0) waiters.splice(k, 1);
+          rej(new Error('等待服务器消息超时'));
+        }, timeoutMs || 3000);
+        waiters.push(entry);
       });
     }
 
@@ -95,6 +104,7 @@ function wsConnect(port) {
     api = {
       send: send,
       next: next,
+      drain: function () { inbox.length = 0; },
       close: function () { try { sock.destroy(); } catch (e) {} },
       /** 一直读到匹配的消息（忽略中途的 lobbyState 广播） */
       until: async function (pred, timeoutMs) {
@@ -177,39 +187,76 @@ function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
     guest.send({ type: 'joinRoom', roomId: roomId });
     const joined = await guest.until(function (m) { return m.type === 'roomJoined'; });
     const peerJoined = await host.until(function (m) { return m.type === 'peerJoined'; });
-    check('加入者进入房间 + 房主收到 peerJoined', joined.room.id === roomId && peerJoined.playerName === '加入者Beta');
+    check('加入者进入房间 + 房主收到 peerJoined', joined.room.id === roomId && peerJoined.name === '加入者Beta',
+      '房间 ' + roomId + ' / ' + peerJoined.name);
 
-    // 6) roomState = playing（房主点「开始游戏」时发的）
+    // 6) 先把房间补满到 4 人（必须在设成"已开局"之前，开局后就不让进了）
+    const extra = [];
+    let joinedCount = 2;                        // 房主 + 加入者Beta
+    for (let i = 0; i < 2; i++) {               // 再补 2 个正好满 4
+      const c = await wsConnect(PORT);
+      c.send({ type: 'login', name: '补位' + i });
+      await c.until(function (m) { return m.type === 'loginOk'; });
+      c.send({ type: 'joinRoom', roomId: roomId });
+      const r = await c.until(function (m) { return m.type === 'roomFull' || m.type === 'roomJoined'; });
+      if (r.type === 'roomJoined') joinedCount++;
+      else check('第 ' + (i + 3) + ' 个人不该被拒', false, r.reason || '');
+      extra.push(c);
+    }
+    check('房间能容纳 4 人（2~4 人混战）', joinedCount === 4, '当前 ' + joinedCount + ' 人');
+
+    const fifth = await wsConnect(PORT);
+    fifth.send({ type: 'login', name: '路人Epsilon' });
+    await fifth.until(function (m) { return m.type === 'loginOk'; });
+    fifth.send({ type: 'joinRoom', roomId: roomId });
+    const full = await fifth.until(function (m) { return m.type === 'roomFull' || m.type === 'roomJoined'; });
+    check('满员房间（4 人）拒绝第 5 个人', full.type === 'roomFull', full.reason || '');
+    fifth.close();
+
+    // 7) roomState = playing（房主点「开始游戏」时发的）
     host.send({ type: 'roomState', state: 'playing' });
     const playing = await guest.until(function (m) { return m.type === 'lobbyState' && m.rooms.some(function (r) { return r.id === roomId && r.state === 'playing'; }); });
     check('开局后大厅状态变为「对战中」', !!playing);
 
-    // 7) 对局消息双向中继
+    // 8) 对局消息中继：普通玩家 -> 只给房主；房主 -> 广播给所有人
     guest.send({ type: 'roomMsg', data: { type: 'me', x: 1.5, z: 2.5, yaw: 0.3, weapon: 'smg' } });
-    const meMsg = await host.until(function (m) { return m.type === 'roomMsg'; });
-    check('加入者 → 房主：位置/朝向/武器转发', meMsg.data && meMsg.data.type === 'me' && meMsg.data.weapon === 'smg');
+    const meMsg = await host.until(function (m) { return m.type === 'roomMsg' && m.data.type === 'me'; });
+    check('普通玩家 → 房主：位置/朝向/武器转发（带 from）', meMsg.data && meMsg.data.weapon === 'smg' && meMsg.from > 0,
+      'from=' + meMsg.from);
 
-    host.send({ type: 'roomMsg', data: { type: 'snap', host: { x: 0, y: 1.6, z: 0, yaw: 0, alive: true }, enemies: [{ i: 0, x: 5, z: 5, alive: true, spawnT: 1 }] } });
+    const c0 = extra[0], c1 = extra[1];
+    c0.drain(); c1.drain();
+    host.send({ type: 'roomMsg', data: { type: 'snap', p: [{ id: 1, x: 0, y: 1.6, z: 0, yaw: 0, hp: 100, k: 0, al: true }] } });
     const snap = await guest.until(function (m) { return m.type === 'roomMsg' && m.data.type === 'snap'; });
-    check('房主 → 加入者：敌人快照转发（房主权威）', !!(snap.data.enemies && snap.data.enemies.length === 1));
+    check('房主 → 所有人：全量快照转发（房主权威）', !!(snap.data.p && snap.data.p.length === 1));
+    const got0 = await c0.until(function (m) { return m.type === 'roomMsg' && m.data.type === 'snap'; });
+    const got1 = await c1.until(function (m) { return m.type === 'roomMsg' && m.data.type === 'snap'; });
+    check('房主一条消息同时广播到房间里其他所有人', !!got0 && !!got1);
 
-    host.send({ type: 'roomMsg', data: { type: 'kill', headshot: true } });
+    host.send({ type: 'roomMsg', data: { type: 'kill', by: 1, victim: 2, headshot: true } });
     const kill = await guest.until(function (m) { return m.type === 'roomMsg' && m.data.type === 'kill'; });
-    check('击杀/受击/结束等对局消息转发', kill.data.headshot === true);
+    check('击杀/受击/复活等对局消息转发', kill.data.headshot === true);
 
-    // 8) 第三人挤不进满员房间
-    const third = await wsConnect(PORT);
-    third.send({ type: 'login', name: '路人Gamma' });
-    await third.until(function (m) { return m.type === 'loginOk'; });
-    third.send({ type: 'joinRoom', roomId: roomId });
-    const full = await third.until(function (m) { return m.type === 'roomFull' || m.type === 'roomJoined'; });
-    check('满员房间拒绝第三人', full.type === 'roomFull', full.reason || '');
-    third.close();
+    // 8b) 普通玩家的上报不能被漏给其他普通玩家（只给房主）
+    c0.drain();
+    guest.send({ type: 'roomMsg', data: { type: 'me', x: 9, z: 9 } });
+    await host.until(function (m) { return m.type === 'roomMsg' && m.data.type === 'me' && m.data.x === 9; });
+    let leaked = false;
+    try { await c0.until(function (m) { return m.data && m.data.type === 'me' && m.data.x === 9; }, 800); leaked = true; } catch (e) {}
+    check('普通玩家的上报只发给房主，不会漏给其他人', !leaked);
 
-    // 9) 加入者离开 -> 房主收到 peerLeft
+    // 9) 有人离开 -> 房里所有人收到 peerLeft
+    c0.drain();
     guest.send({ type: 'leaveRoom' });
     const peerLeft = await host.until(function (m) { return m.type === 'peerLeft'; });
-    check('加入者离开，房主收到 peerLeft', !!peerLeft);
+    const peerLeft2 = await c0.until(function (m) { return m.type === 'peerLeft'; });
+    check('有人离开，房主和房里其他人都会收到 peerLeft', !!peerLeft && !!peerLeft2, '离开的是 ' + peerLeft.name);
+
+    // 9b) 走的人不能还挂在房间名单里
+    const roomNow = peerLeft.room;
+    check('离开的人已从房间名单移除', !!roomNow && roomNow.members.length === 3, roomNow ? roomNow.members.length + ' 人' : '无 room 字段');
+
+    extra.forEach(function (c) { c.close(); });
 
     // 10) 房主离开 -> 房间解散，大厅里消失
     const watcher = await wsConnect(PORT);
